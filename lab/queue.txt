@@ -8,13 +8,15 @@
 # Format:
 # <name> <steps> [ENV_VAR=value ...]
 
-act7_relu_500 500 MLP_ACT=relu
-act7_silu_500 500 MLP_ACT=silu
-act7_gelu_500 500 MLP_ACT=gelu
-act7_gated_relu2_seed2026_500 500 MLP_ACT=gated_relu2 SEED=2026
-act7_reluglu_seed2026_500 500 MLP_ACT=reluglu SEED=2026
-act7_swirelu_seed2026_500 500 MLP_ACT=swirelu SEED=2026
-act8_relu2_ctrl_1000 1000 MLP_ACT=relu2
-act8_gated_relu2_1000 1000 MLP_ACT=gated_relu2
-act8_reluglu_1000 1000 MLP_ACT=reluglu
-act8_swiglu_ctrl_1000 1000 MLP_ACT=swiglu
+act7_swirelu2_500 500 MLP_ACT=swirelu2
+act7_swiglu2_500 500 MLP_ACT=swiglu2
+act7_relu2_postsigmoid_500 500 MLP_ACT=relu2_postsigmoid
+act7_relu2_lingate_500 500 MLP_ACT=relu2_lingate
+act9_relu15_500 500 MLP_ACT=relu15
+act9_relu22_500 500 MLP_ACT=relu22
+act9_relu25_500 500 MLP_ACT=relu25
+act9_gated_relu22_500 500 MLP_ACT=gated_relu22
+act10_relu18_500 500 MLP_ACT=relu18
+act10_relu24_500 500 MLP_ACT=relu24
+act10_mild_gated_relu2_500 500 MLP_ACT=mild_gated_relu2
+act10_mild_gated_relu22_500 500 MLP_ACT=mild_gated_relu22

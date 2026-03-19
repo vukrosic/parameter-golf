@@ -23,6 +23,13 @@ and which part of SwiGLU is worth borrowing:
 
 - smooth multiplicative gate
 
+Rules for this lane:
+
+- causal isolation tests only
+- ingredient-comparison pairs
+- no extra-seed confirmation yet
+- no `1000`-step extension yet
+
 ## Run Set
 
 Wave 1:
@@ -41,6 +48,28 @@ Wave 2:
 - `act5_reluglu_500`
 - `act5_relu2_lingate_500`
 - `act5_relu2_postsigmoid_500`
+
+Wave 3:
+
+- `act7_relu_500`
+- `act7_silu_500`
+- `act7_gelu_500`
+- `act7_swiglu_500`
+- `act7_swirelu2_500`
+- `act7_swiglu2_500`
+- `act7_relu2_postsigmoid_500`
+- `act7_relu2_lingate_500`
+
+Wave 4:
+
+- `act9_relu15_500`
+- `act9_relu22_500`
+- `act9_relu25_500`
+- `act9_gated_relu22_500`
+- `act10_relu18_500`
+- `act10_relu24_500`
+- `act10_mild_gated_relu2_500`
+- `act10_mild_gated_relu22_500`
 
 ## Current Results
 
@@ -103,10 +132,7 @@ SwiGLU:
 - to improve `relu2`, the most relevant tests are ReLU² plus a light gate, not full smooth gated-square stacks
 - the full squared SwiGLU path looks bad
 
-To understand how to surpass `relu2`, do two things:
-
-1. isolate ingredients at `500` steps
-2. multi-seed + extend only the top 2-3 candidates
+To understand how to surpass `relu2`, stay in ingredient-isolation mode first.
 
 ## Next Tests
 
@@ -117,12 +143,20 @@ Best isolation pairs:
 3. `swiglu` vs `swiglu2`
 4. `swirelu` vs `swirelu2`
 5. `relu2` vs `relu2_postsigmoid`
+6. `relu18` vs `relu2` vs `relu22` vs `relu24` vs `relu25`
+7. `gated_relu2` vs `mild_gated_relu2`
+8. `gated_relu22` vs `mild_gated_relu22`
 
 Practical next runs:
 
 1. `relu` vs `silu` to test hard thresholding without the square
-2. another seed for `gated_relu2`, `reluglu`, and `swirelu`
-3. `1000`-step extensions for the best 2-3 activation candidates
+2. `relu` vs `gelu` to compare hard vs softer single-path activations
+3. `swiglu` vs `swiglu2` to isolate the effect of adding the square
+4. `swirelu` vs `swirelu2` to isolate the same question with a ReLU value path
+5. `relu2` vs `relu2_postsigmoid` to test square placement
+6. `relu2` vs `relu2_lingate` to test whether a plain gate helps or hurts
+7. power-law ReLU around `2.0` to test whether the win is specific to exactly squaring
+8. mild gated ReLU² to test whether the gate should refine the core instead of dominating it
 
 ## Working Hypothesis
 

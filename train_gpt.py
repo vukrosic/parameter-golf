@@ -633,12 +633,15 @@ class MLP(nn.Module):
             "geglu",
             "swiglu2",
             "gated_relu2",
+            "mild_gated_relu2",
             "swirelu",
             "swirelu2",
             "relu2_softplus_gate",
             "reluglu",
             "relu2_lingate",
             "relu2_postsigmoid",
+            "gated_relu22",
+            "mild_gated_relu22",
         )
         # GLU variants use 2/3 hidden to match parameter count (3 matrices vs 2).
         hidden = (2 * mlp_mult * dim + 1) // 3 if is_glu else mlp_mult * dim
@@ -654,10 +657,25 @@ class MLP(nn.Module):
             return self.proj(x.square())
         elif self.act == "relu":
             return self.proj(torch.relu(self.fc(x)))
+        elif self.act == "relu15":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 1.5))
+        elif self.act == "relu18":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 1.8))
         elif self.act == "silu":
             return self.proj(F.silu(self.fc(x)))
         elif self.act == "gelu":
             return self.proj(F.gelu(self.fc(x)))
+        elif self.act == "relu22":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 2.2))
+        elif self.act == "relu24":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 2.4))
+        elif self.act == "relu25":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 2.5))
         elif self.act == "silu2":
             x = F.silu(self.fc(x))
             return self.proj(x.square())
@@ -677,6 +695,20 @@ class MLP(nn.Module):
             # relu2 with a learned sigmoid gate: sparsity + learned selection
             h = torch.relu(self.fc(x)).square()
             return self.proj(h * torch.sigmoid(self.fc_gate(x)))
+        elif self.act == "mild_gated_relu2":
+            # Keep relu2 as the main signal; let the gate only rescale mildly.
+            h = torch.relu(self.fc(x)).square()
+            gate = 0.5 + 0.5 * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h * gate)
+        elif self.act == "gated_relu22":
+            # Power-law relu with a bounded gate.
+            h = torch.pow(torch.relu(self.fc(x)), 2.2)
+            return self.proj(h * torch.sigmoid(self.fc_gate(x)))
+        elif self.act == "mild_gated_relu22":
+            # Same mild gate idea with slightly stronger-than-square amplification.
+            h = torch.pow(torch.relu(self.fc(x)), 2.2)
+            gate = 0.5 + 0.5 * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h * gate)
         elif self.act == "swirelu":
             # Mix ReLU sparsity on the value path with SwiGLU's smooth gate.
             h = torch.relu(self.fc(x))
