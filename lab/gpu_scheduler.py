@@ -37,7 +37,8 @@ def run_experiment(gpu_id, name, steps, env):
             ["bash", "lab/run_experiment.sh", name, str(steps)],
             env=cmd_env,
             stdout=f, stderr=subprocess.STDOUT,
-            cwd=os.getcwd()
+            stdin=subprocess.DEVNULL,
+            cwd=os.getcwd(),
         )
 
 def load_queue():

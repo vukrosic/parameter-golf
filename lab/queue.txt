@@ -8,22 +8,12 @@
 # <name> <steps> [ENV_VAR=value ...]
 
 # Finish the decisive queued wave already in progress.
-act7_relu2_lingate_500 500 MLP_ACT=relu2_lingate
 
 # ReLU-family 2x2: selector fixed hard, test square and mild gate.
-act14_power_relu10_500 500 MLP_ACT=power_relu ACT_POWER=1.0
-act14_power_relu20_500 500 MLP_ACT=power_relu ACT_POWER=2.0
-act14_power_relu_mildgate10_500 500 MLP_ACT=power_relu_mildgate ACT_POWER=1.0 ACT_GATE_FLOOR=0.5
-act14_power_relu_mildgate20_500 500 MLP_ACT=power_relu_mildgate ACT_POWER=2.0 ACT_GATE_FLOOR=0.5
 
 # SiLU-family 2x2: smooth counterpart with the same square/gate structure.
-act14_power_silu10_500 500 MLP_ACT=power_silu ACT_POWER=1.0
-act14_power_silu20_500 500 MLP_ACT=power_silu ACT_POWER=2.0
-act14_power_silu_mildgate10_500 500 MLP_ACT=power_silu_mildgate ACT_POWER=1.0 ACT_GATE_FLOOR=0.5
-act14_power_silu_mildgate20_500 500 MLP_ACT=power_silu_mildgate ACT_POWER=2.0 ACT_GATE_FLOOR=0.5
 
 # Cross-family bridge runs: same gate, compare hard vs smooth around the strongest region.
-act15_power_relu22_500 500 MLP_ACT=power_relu ACT_POWER=2.2
 act15_power_relu_mildgate22_500 500 MLP_ACT=power_relu_mildgate ACT_POWER=2.2 ACT_GATE_FLOOR=0.5
 act15_power_silu22_500 500 MLP_ACT=power_silu ACT_POWER=2.2
 act15_power_silu_mildgate22_500 500 MLP_ACT=power_silu_mildgate ACT_POWER=2.2 ACT_GATE_FLOOR=0.5
