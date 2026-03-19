@@ -1,0 +1,31 @@
+{
+  "config": {
+    "ITERATIONS": "1200",
+    "MAX_WALLCLOCK_SECONDS": "4692",
+    "MLP_MULT": "2",
+    "MODEL_DIM": "432",
+    "NUM_HEADS": "8",
+    "NUM_KV_HEADS": "8",
+    "NUM_LAYERS": "11",
+    "RUN_ID": "arch_mha_11x432_m2_h88_1200",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-19T16:18:39+00:00",
+  "git": {
+    "commit": "b7eafc790e4d1ae3a512acc36080ec1359a70d90",
+    "commit_short": "b7eafc7",
+    "dirty_worktree": false
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/arch_mha_11x432_m2_h88_1200.txt",
+  "run_id": "arch_mha_11x432_m2_h88_1200"
+}
