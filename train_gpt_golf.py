@@ -90,6 +90,9 @@ class Hyperparameters:
     # Skip heavy post-training eval (serialization + int8 roundtrip) for fast screening
     skip_eval = bool(int(os.environ.get("SKIP_EVAL", "0")))
 
+    # Cap validation tokens for quick experiments (0 = use all)
+    val_max_tokens = int(os.environ.get("VAL_MAX_TOKENS", 0))
+
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
     head_lr = float(os.environ.get("HEAD_LR", 0.008))
@@ -259,7 +262,10 @@ def eval_val(
             f"GRAD_ACCUM_STEPS={grad_accum_steps}, seq_len={seq_len}"
         )
     local_batch_seqs = local_batch_tokens // seq_len
-    total_seqs = (val_tokens.numel() - 1) // seq_len
+    total_tokens = val_tokens.numel() - 1
+    if args.val_max_tokens > 0:
+        total_tokens = min(total_tokens, args.val_max_tokens)
+    total_seqs = total_tokens // seq_len
     seq_start = (total_seqs * rank) // world_size
     seq_end = (total_seqs * (rank + 1)) // world_size
     val_loss_sum = torch.zeros((), device=device, dtype=torch.float64)
@@ -295,6 +301,14 @@ def eval_val(
     bits_per_token = val_loss.item() / math.log(2.0)
     tokens_per_byte = val_token_count.item() / val_byte_count.item()
     model.train()
+    # Invalidate RoPE caches created under inference_mode so training can reuse them
+    base = model.module if hasattr(model, "module") else model
+    base = base._orig_mod if hasattr(base, "_orig_mod") else base
+    for module in base.modules():
+        if isinstance(module, Rotary):
+            module._seq_len_cached = 0
+            module._cos_cached = None
+            module._sin_cached = None
     return float(val_loss.item()), float(bits_per_token * tokens_per_byte)
 
 # -----------------------------
@@ -570,8 +584,8 @@ class Rotary(nn.Module):
         ):
             t = torch.arange(seq_len, device=device, dtype=self.inv_freq.dtype)
             freqs = torch.outer(t, self.inv_freq.to(device))
-            self._cos_cached = freqs.cos()[None, None, :, :]
-            self._sin_cached = freqs.sin()[None, None, :, :]
+            self._cos_cached = freqs.cos()[None, None, :, :].clone()
+            self._sin_cached = freqs.sin()[None, None, :, :].clone()
             self._seq_len_cached = seq_len
         return self._cos_cached.to(dtype=dtype), self._sin_cached.to(dtype=dtype)
 
@@ -808,7 +822,7 @@ def main() -> None:
 
     code = Path(__file__).read_text(encoding="utf-8")
     args = Hyperparameters()
-    if not args.skip_eval:
+    if not bool(int(os.environ.get("NO_COMPILE", "0"))):
         zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)
 
     # -----------------------------
@@ -920,8 +934,8 @@ def main() -> None:
         if isinstance(module, CastedLinear):
             module.float()
     restore_low_dim_params_to_fp32(base_model)
-    if args.skip_eval:
-        compiled_model = base_model  # skip torch.compile for fast screening
+    if bool(int(os.environ.get("NO_COMPILE", "0"))):
+        compiled_model = base_model
     else:
         compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
     model: nn.Module = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
