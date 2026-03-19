@@ -184,3 +184,14 @@ The `train_gpt.py` and `train_gpt_mlx.py` scripts are intended as good launching
 Join the [OpenAI Discord server](https://discord.com/invite/openai) and visit the Parameter Golf channels (#parameter-golf-discussions, #parameter-golf-announcements) and ask questions.
 
 This repository adapts code from `modded-nanogpt`, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attribution.
+
+
+--
+
+# Install tmux (if not already installed)
+sudo apt install tmux -y        # Debian/Ubuntu
+# sudo yum install tmux -y      # RHEL/CentOS
+
+# Install Claude Code (if not already installed)
+curl -fsSL https://claude.ai/install.sh | bash
+
