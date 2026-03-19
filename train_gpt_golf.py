@@ -306,7 +306,7 @@ CONTROL_TENSOR_NAME_PATTERNS = tuple(
     pattern
     for pattern in os.environ.get(
         "CONTROL_TENSOR_NAME_PATTERNS",
-        "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,block_cycle",
+        "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights",
     ).split(",")
     if pattern
 )
@@ -709,15 +709,12 @@ class GPT(nn.Module):
         if self.use_recurrence:
             actual_blocks = num_unique_blocks
             self.total_layers = num_effective_layers
-            # Build the cycle mapping: which unique block each effective layer uses
-            self.register_buffer(
-                "block_cycle",
-                torch.tensor([i % num_unique_blocks for i in range(num_effective_layers)], dtype=torch.long),
-                persistent=False,
-            )
+            # Plain Python list — torch.compile friendly (no buffer indexing)
+            self._block_cycle = [i % num_unique_blocks for i in range(num_effective_layers)]
         else:
             actual_blocks = num_layers
             self.total_layers = num_layers
+            self._block_cycle = list(range(num_layers))
 
         self.num_encoder_layers = self.total_layers // 2
         self.num_decoder_layers = self.total_layers - self.num_encoder_layers
@@ -759,9 +756,7 @@ class GPT(nn.Module):
                 nn.init.zeros_(module.weight)
 
     def _get_block(self, effective_idx: int) -> Block:
-        if self.use_recurrence:
-            return self.blocks[self.block_cycle[effective_idx].item()]
-        return self.blocks[effective_idx]
+        return self.blocks[self._block_cycle[effective_idx]]
 
     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
         x = self.tok_emb(input_ids)

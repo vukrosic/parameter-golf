@@ -9,3 +9,10 @@ data/docs_selected.jsonl
 .mypy_cache/
 .venv
 logs/
+*.pt
+*.ptz
+final_model.*
+checkpoints/
+results/**/train.log
+records/**/train.log
+!records/**/submission.json
