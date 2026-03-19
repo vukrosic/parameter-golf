@@ -636,6 +636,9 @@ class MLP(nn.Module):
             "swirelu",
             "swirelu2",
             "relu2_softplus_gate",
+            "reluglu",
+            "relu2_lingate",
+            "relu2_postsigmoid",
         )
         # GLU variants use 2/3 hidden to match parameter count (3 matrices vs 2).
         hidden = (2 * mlp_mult * dim + 1) // 3 if is_glu else mlp_mult * dim
@@ -686,6 +689,19 @@ class MLP(nn.Module):
             # ReLU² with a strictly-positive smooth gate.
             h = torch.relu(self.fc(x)).square()
             return self.proj(h * F.softplus(self.fc_gate(x)))
+        elif self.act == "reluglu":
+            # ReLU value path with a plain linear GLU gate.
+            h = torch.relu(self.fc(x))
+            return self.proj(h * self.fc_gate(x))
+        elif self.act == "relu2_lingate":
+            # ReLU² core with an unconstrained linear gate.
+            h = torch.relu(self.fc(x)).square()
+            return self.proj(h * self.fc_gate(x))
+        elif self.act == "relu2_postsigmoid":
+            # Gate first, then square; tests whether quadratic amplification
+            # is more useful before or after selection.
+            h = torch.relu(self.fc(x)) * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h.square())
         else:
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
 

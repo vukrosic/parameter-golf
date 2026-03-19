@@ -40,3 +40,26 @@ At `500` steps:
 - keep variants that beat `relu2`
 - kill anything clearly behind by `>= 0.01` BPB
 - if one gated ReLU² variant wins, extend it to `1000+` before inventing more variants
+
+## Phase 2: Intersection Sweep
+
+After the first wave, run a more explicit factorization of the design space:
+
+- value path: `relu`, `relu2`, `silu`
+- gate type: linear, sigmoid, `silu`, softplus
+- square placement: before gate vs after gate
+
+Second-wave runs:
+
+- `act5_swiglu_ctrl_500`: standard SwiGLU reference
+- `act5_silu2_500`: smooth single-path squared reference
+- `act5_reluglu_500`: ReLU value path + linear gate
+- `act5_relu2_lingate_500`: ReLU² + linear gate
+- `act5_relu2_postsigmoid_500`: gate first, square second
+
+This wave is meant to answer:
+
+- is the gain coming from the square itself?
+- is it the gate, not the square?
+- does ReLU sparsity matter more than SwiGLU smoothness?
+- is `relu2` best because it squares after hard selection?
