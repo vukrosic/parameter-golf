@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.40684089,
+    "val_loss": 2.37539191
+  },
+  "generated_at_utc": "2026-03-19T15:25:45+00:00",
+  "int8_zlib_model_bytes": 13817581,
+  "int8_zlib_total_submission_bytes": 13873774,
+  "last_eval": {
+    "max_steps": 1000,
+    "step": 1000,
+    "val_bpb": 1.406,
+    "val_loss": 2.374
+  },
+  "run_id": "arch_L12_D448_H8_KV8_M1_1000"
+}
