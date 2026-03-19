@@ -199,5 +199,8 @@ curl -fsSL https://claude.ai/install.sh | bash
 tmux new-session -s claude 'claude --dangerously-skip-permissions'
 
 
+tmux ls
+
+
 # Reattach to your session
 tmux attach -t claude

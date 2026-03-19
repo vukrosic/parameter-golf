@@ -98,6 +98,32 @@ Optimal schedule parameters. Run best config for 3000-5000 steps.
 
 ---
 
+## Phase 2.5: AttnRes — Inter-layer Attention (PRIORITY)
+
+**Purpose**: Replace standard residual connections with weighted inter-layer attention.
+**Claim**: ~25% improvement for <5% overhead. If true, this is the single biggest win available.
+
+### Why prioritize this
+- Adds negligible parameters (~4.5 KB) — fits easily in 16MB budget
+- Specifically benefits small/shallow models (our 9-layer, 512-dim architecture)
+- Better information routing > brute force scaling at this model size
+
+### Experiments
+
+- [ ] `attnres_v3_scalar`: Learnable skip weights (simplest test of hypothesis), 500 steps
+- [ ] `attnres_v1_full`: Full AttnRes with static queries, 500 steps
+- [ ] `attnres_v2_block`: Block AttnRes (embedding isolated, 2-4 blocks), 500 steps
+- [ ] Winner extended to 1000+ steps
+- [ ] Winner + deeper architecture (12 layers @ smaller dim to stay under 16MB)
+
+### Details
+See `/lab/experiments/attnres/PLAN.md` and `/lab/research_papers/attnres.md`
+
+### Deliverable
+Best AttnRes variant with val_bpb improvement quantified. Content post with before/after results.
+
+---
+
 ## Phase 3: Architecture Search (Days 3-5)
 
 **Purpose**: Find better depth/width/head tradeoffs within the 16MB cap.
