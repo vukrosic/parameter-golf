@@ -114,14 +114,37 @@ Nothing useful.
 
 LR tuning alone: 8.359 → 2.645 at 120s. Massive win.
 
-## Best config for 8xH100 submission
+## 8xH100 Run 1: MATRIX_LR=30, SCALAR_LR=3, WARMUP=0 (600s, 8xH100)
+
+**RESULT: COMPLETE DIVERGENCE**
+
+- train_loss stuck at 6.9315 (= ln(1024) = random loss) from the very beginning
+- val_bpb = 4.1052 (worse than random init)
+- ~10,500 steps completed, all at random loss
+- The model never learned anything
+
+**Root cause**: LR=30 was tuned on **8-step runs** (25 seconds, 1xH100, full batch).
+At ~10,000 steps the LR is catastrophically too high and the model diverges immediately.
+The "optimal LR" found in short sweeps does NOT transfer to long training.
+
+**Critical lesson**: Optimal LR depends on training duration, not just batch size.
+The short-run LR sweeps are misleading for full 600s training.
+
+## Next steps needed
+
+1. The small-batch sweep (65K tokens, 172 steps) found optimal MATRIX_LR=0.64
+2. Need to redo LR sweep at full 600s duration (or at least 120-180s)
+3. Consider that baseline default (0.04) trained for 13,780 steps and got 1.2244 BPB
+4. Optimal LR for full training is likely in range 0.04-1.0 for MATRIX_LR
+5. Linear batch-size scaling may not hold when training duration also changes
+
+## Previous "best config" (INVALIDATED)
 
 ```
-MATRIX_LR=30.0
-SCALAR_LR=3.0
+MATRIX_LR=30.0   # TOO HIGH - diverges at long training
+SCALAR_LR=3.0    # TOO HIGH - diverges at long training
 WARMUP_STEPS=0
 ```
-Everything else default (9x512, MLP_MULT=2, warmdown schedule, WARMDOWN_ITERS=1200).
 
 ## What didn't matter
 
