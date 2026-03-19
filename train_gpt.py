@@ -58,6 +58,8 @@ class Hyperparameters:
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 1024))
     max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
+    checkpoint_every = int(os.environ.get("CHECKPOINT_EVERY", 0))  # 0 = disabled
+    resume_from = os.environ.get("RESUME_FROM", "")  # path to checkpoint dir
 
     # Model shape.
     vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
@@ -997,15 +999,54 @@ def main() -> None:
         train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
 
     # -----------------------------
+    # CHECKPOINT HELPERS
+    # -----------------------------
+
+    def save_checkpoint(step: int, training_time_ms: float) -> None:
+        if not master_process or args.checkpoint_every <= 0:
+            return
+        ckpt_dir = f"checkpoints/{args.run_id}"
+        os.makedirs(ckpt_dir, exist_ok=True)
+        torch.save({
+            "step": step,
+            "training_time_ms": training_time_ms,
+            "model": base_model.state_dict(),
+            "optimizers": [opt.state_dict() for opt in optimizers],
+            "stream_file_idx": train_loader.stream.file_idx,
+            "stream_pos": train_loader.stream.pos,
+        }, f"{ckpt_dir}/ckpt_{step}.pt")
+        log0(f"checkpoint saved: {ckpt_dir}/ckpt_{step}.pt")
+
+    # -----------------------------
+    # RESUME FROM CHECKPOINT
+    # -----------------------------
+
+    start_step = 0
+    training_time_ms = 0.0
+    if args.resume_from:
+        log0(f"resuming from {args.resume_from}")
+        ckpt = torch.load(args.resume_from, map_location=device)
+        base_model.load_state_dict(ckpt["model"], strict=True)
+        for opt, opt_state in zip(optimizers, ckpt["optimizers"], strict=True):
+            opt.load_state_dict(opt_state)
+        start_step = ckpt["step"]
+        training_time_ms = ckpt["training_time_ms"]
+        # Advance data loader to match checkpoint position
+        train_loader.stream.file_idx = ckpt["stream_file_idx"]
+        train_loader.stream.tokens = load_data_shard(train_loader.stream.files[ckpt["stream_file_idx"]])
+        train_loader.stream.pos = ckpt["stream_pos"]
+        log0(f"resumed at step {start_step}, training_time {training_time_ms:.0f}ms")
+        del ckpt
+
+    # -----------------------------
     # MAIN TRAINING LOOP
     # -----------------------------
 
-    training_time_ms = 0.0
     stop_after_step: int | None = None
     torch.cuda.synchronize()
     t0 = time.perf_counter()
 
-    step = 0
+    step = start_step
     while True:
         last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
 
@@ -1029,6 +1070,8 @@ def main() -> None:
                 f"step:{step}/{args.iterations} val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} "
                 f"train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms / max(step, 1):.2f}ms"
             )
+            if args.checkpoint_every > 0 and step > 0 and step % args.checkpoint_every == 0:
+                save_checkpoint(step, training_time_ms)
             torch.cuda.synchronize()
             t0 = time.perf_counter()
 
