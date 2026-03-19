@@ -54,32 +54,78 @@ Note: optimal LR scaled ~50x from small→full batch (0.64 → 30.0), consistent
 | 4.0 | 3.031 |
 | 5.0 | 3.133 |
 
-## EMBED_LR sweep (full batch, 25s, MATRIX_LR=30)
+## EMBED_LR sweep (full batch, 120s, 37 steps, MATRIX_LR=30)
 
-No signal at 8 steps — all values 3.263–3.265. Needs more steps.
+No signal — all values 2.6485–2.6489 across 0.1→30.0. Completely insensitive (tied embeddings).
 
-## Schedule sweep (full batch, 25s, MATRIX_LR=30, SCALAR_LR=3.0)
+## Warmup sweep (full batch, 120s, MATRIX_LR=30, SCALAR_LR=3.0)
 
-| Schedule | WARMDOWN_ITERS | Val BPB |
+| WARMUP_STEPS | Val BPB |
+|---|---|
+| **0** | **2.6447** |
+| 1 | 2.6488 |
+| 3 | 2.6487 |
+| 5 | 2.6484 |
+| 10 | 2.7688 |
+
+WARMUP=0 marginally best. WARMUP=10 hurts (wastes steps at this LR).
+
+## Architecture sweep (full batch, 50s, MATRIX_LR=30, SCALAR_LR=3.0)
+
+| Config | Params | Steps | Val BPB |
+|---|---|---|---|
+| 6x640 | 17.9M | 8 | 3.031 |
+| 7x576 | 16.9M | 13 | 2.842 |
+| **9x512 (default)** | **17.0M** | **16** | **2.800** |
+| 12x448 | 17.3M | 13 | 2.834 |
+| 15x384 | 15.9M | 13 | 2.888 |
+
+Default 9x512 wins — also fastest per step. Wider/shallower configs lose on step throughput.
+
+## MLP_MULT sweep (full batch, 50s)
+
+| MLP_MULT | Params | Val BPB |
 |---|---|---|
-| warmdown | 500 | **2.992** |
-| warmdown | 1200 (default) | 3.008 |
-| warmdown | 100 | 3.234 |
-| cosine | any | ~3.9 |
+| 1 | 12.3M | 3.126 |
+| **2 (default)** | **17.0M** | **2.838** |
+| 3 | 21.8M | 2.790 |
+| 4 | 26.5M | 2.803 |
 
-Cosine didn't help at full batch. Warmdown_500 marginal win but schedule is entangled with total run length — unreliable at 8 steps.
+MLP=3 slightly better but exceeds 16MB param cap. Default MLP=2 best within budget.
 
-## Current best config
+## Misc toggles (full batch, 50s)
 
-- MATRIX_LR=30.0
-- SCALAR_LR=3.0
-- WARMDOWN_ITERS=1200 (default, don't tune until longer runs)
-- Everything else default
+| Toggle | Val BPB | vs baseline 2.800 |
+|---|---|---|
+| SwiGLU | 2.887 | worse |
+| ROPE_BASE=1000 | 2.797 | same |
+| ROPE_BASE=100000 | 2.804 | same |
+| LOGIT_SOFTCAP=50 | 2.804 | same |
+| QK_GAIN_INIT=2.0 | 2.815 | same |
 
-## Key findings
+Nothing useful.
 
-1. Default MATRIX_LR (0.04) is massively undertrained — 30.0 is optimal at full batch
-2. SCALAR_LR similarly undertrained — 3.0 optimal (75x default)
-3. LR rankings stable across 5s/10s/20s/40s at small batch
-4. Schedule needs longer runs to tune properly
-5. EMBED_LR insensitive at 8 steps
+## Scaling check (full batch, 120s)
+
+| Config | Val BPB |
+|---|---|
+| Default (MATRIX_LR=0.04, SCALAR_LR=0.04) | 8.359 |
+| **Best (MATRIX_LR=30, SCALAR_LR=3, WARMUP=0)** | **2.645** |
+
+LR tuning alone: 8.359 → 2.645 at 120s. Massive win.
+
+## Best config for 8xH100 submission
+
+```
+MATRIX_LR=30.0
+SCALAR_LR=3.0
+WARMUP_STEPS=0
+```
+Everything else default (9x512, MLP_MULT=2, warmdown schedule, WARMDOWN_ITERS=1200).
+
+## What didn't matter
+
+- EMBED_LR (tied embeddings make it irrelevant)
+- Architecture changes (default 9x512 is already optimal for throughput)
+- SwiGLU, RoPE base, logit softcap, QK gain
+- Warmup (0 vs 1 is noise)
