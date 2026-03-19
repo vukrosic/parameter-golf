@@ -93,7 +93,7 @@ class Hyperparameters:
     attnres_mode = os.environ.get("ATTNRES_MODE", "none")
 
     # MLP activation: "relu2" (default), "relu", "silu", "gelu", "swiglu", "geglu"
-    # GLU variants (swiglu/geglu) scale hidden dim to ~2/3 to match parameter count.
+    # GLU variants scale hidden dim to ~2/3 to match parameter count.
     mlp_act = os.environ.get("MLP_ACT", "relu2")
 
 # -----------------------------
@@ -628,7 +628,15 @@ class MLP(nn.Module):
     def __init__(self, dim: int, mlp_mult: int, act: str = "relu2"):
         super().__init__()
         self.act = act
-        is_glu = act in ("swiglu", "geglu", "swiglu2", "gated_relu2")
+        is_glu = act in (
+            "swiglu",
+            "geglu",
+            "swiglu2",
+            "gated_relu2",
+            "swirelu",
+            "swirelu2",
+            "relu2_softplus_gate",
+        )
         # GLU variants use 2/3 hidden to match parameter count (3 matrices vs 2).
         hidden = (2 * mlp_mult * dim + 1) // 3 if is_glu else mlp_mult * dim
         self.fc = CastedLinear(dim, hidden, bias=False)
@@ -666,6 +674,18 @@ class MLP(nn.Module):
             # relu2 with a learned sigmoid gate: sparsity + learned selection
             h = torch.relu(self.fc(x)).square()
             return self.proj(h * torch.sigmoid(self.fc_gate(x)))
+        elif self.act == "swirelu":
+            # Mix ReLU sparsity on the value path with SwiGLU's smooth gate.
+            h = torch.relu(self.fc(x))
+            return self.proj(h * F.silu(self.fc_gate(x)))
+        elif self.act == "swirelu2":
+            # ReLU² core with a SwiGLU-style gate.
+            h = torch.relu(self.fc(x)).square()
+            return self.proj(h * F.silu(self.fc_gate(x)))
+        elif self.act == "relu2_softplus_gate":
+            # ReLU² with a strictly-positive smooth gate.
+            h = torch.relu(self.fc(x)).square()
+            return self.proj(h * F.softplus(self.fc_gate(x)))
         else:
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
 

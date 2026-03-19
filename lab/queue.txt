@@ -1,22 +1,11 @@
-# Architecture-only follow-up queue
-#
-# Constraint from FORBIDDEN.md:
-# - learning rate tuning is forbidden
+# ReLU2-neighborhood activation sweep
 #
 # Goal:
-# - run actual architecture experiments, not optimizer sweeps
-# - keep defaults for optimization
-# - test distinct structural hypotheses under the size cap
+# - understand why relu2 works
+# - probe nearby activations, especially hybrids with SwiGLU-style gating
+# - avoid optimizer tuning; keep the training setup fixed
 #
 # Format:
 # <name> <steps> [ENV_VAR=value ...]
 
-# Control: current baseline architecture family at default optimizer settings
-
-# Full-MHA ridge: trade some width for denser attention connectivity
-
-# Attention-heavy budget split: more layers, smaller MLP
-
-# Wide GQA control: test whether width beats extra depth at the same budget class
-
-# Mechanism variant on the strongest backbone family seen so far
+act4_swiglu2_500 500 MLP_ACT=swiglu2
