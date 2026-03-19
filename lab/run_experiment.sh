@@ -2,7 +2,7 @@
 # Usage: lab/run_experiment.sh <experiment_name> <max_steps> [extra_env...]
 #
 # Runs train_gpt.py with standardized settings for 1-GPU development.
-# Results go to results/<experiment_name>/train.log and logs/<experiment_name>.txt
+# Results go to results/<experiment_name>/ and logs/<experiment_name>.txt
 #
 # Examples:
 #   lab/run_experiment.sh baseline_check 200
@@ -52,6 +52,12 @@ python3 train_gpt.py 2>&1 | tee logs/"${NAME}.txt"
 if [ -f "logs/${NAME}.txt" ]; then
     cp "logs/${NAME}.txt" "results/${NAME}/train.log"
 fi
+
+# Export commit-friendly artifacts for git tracking.
+python3 lab/export_experiment_artifacts.py \
+    --run-id "${NAME}" \
+    --log-path "logs/${NAME}.txt" \
+    --output-dir "results/${NAME}"
 
 # Extract final metrics
 echo ""

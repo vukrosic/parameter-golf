@@ -1,0 +1,13 @@
+{
+  "final_quant_eval": null,
+  "generated_at_utc": "2026-03-19T14:24:12+00:00",
+  "int8_zlib_model_bytes": null,
+  "int8_zlib_total_submission_bytes": null,
+  "last_eval": {
+    "max_steps": 2,
+    "step": 0,
+    "val_bpb": 4.1077,
+    "val_loss": 6.9357
+  },
+  "run_id": "test_none"
+}

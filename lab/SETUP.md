@@ -25,6 +25,26 @@ lab/run_experiment.sh my_test_name 13780
 MATRIX_LR=0.08 NUM_LAYERS=12 MODEL_DIM=448 lab/run_experiment.sh my_arch_test 200
 ```
 
+Each run exports commit-friendly artifacts:
+
+- `results/<run_id>/summary.json`
+- `results/<run_id>/metadata.json`
+- `results/<run_id>/train.log` (raw log, git-ignored)
+
+## Git Hook Guardrail
+
+Enable the pre-commit size guard once per clone:
+
+```bash
+lab/install_git_hooks.sh
+```
+
+This blocks staged files larger than 20MB by default. Override if needed:
+
+```bash
+MAX_FILE_MB=50 git commit -m "..."
+```
+
 ## Experiment Duration Guide
 
 On 1xL40S at ~3.33s/step:
