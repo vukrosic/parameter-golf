@@ -1,8 +1,8 @@
-# Phase 1: Matrix LR sweep (500 steps each, ~28 min per experiment)
+# Phase 1: Matrix LR sweep (200 steps each, ~11 min per experiment)
 # Baseline matrix_lr is 0.04. Sweep 0.5x to 4x.
-p1_mlr_0.02 500 MATRIX_LR=0.02
-p1_mlr_0.04 500 MATRIX_LR=0.04
-p1_mlr_0.06 500 MATRIX_LR=0.06
-p1_mlr_0.08 500 MATRIX_LR=0.08
-p1_mlr_0.12 500 MATRIX_LR=0.12
-p1_mlr_0.16 500 MATRIX_LR=0.16
+p1_mlr_0.02 200 MATRIX_LR=0.02
+p1_mlr_0.04 200 MATRIX_LR=0.04
+p1_mlr_0.06 200 MATRIX_LR=0.06
+p1_mlr_0.08 200 MATRIX_LR=0.08
+p1_mlr_0.12 200 MATRIX_LR=0.12
+p1_mlr_0.16 200 MATRIX_LR=0.16
