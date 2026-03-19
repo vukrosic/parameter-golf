@@ -639,6 +639,7 @@ class MLP(nn.Module):
             "gated_relu2",
             "mild_gated_relu2",
             "power_relu_mildgate",
+            "power_silu_mildgate",
             "swirelu",
             "swirelu2",
             "relu2_softplus_gate",
@@ -684,6 +685,9 @@ class MLP(nn.Module):
         elif self.act == "power_relu":
             x = torch.relu(self.fc(x))
             return self.proj(torch.pow(x, self.act_power))
+        elif self.act == "power_silu":
+            x = F.silu(self.fc(x))
+            return self.proj(torch.pow(x, self.act_power))
         elif self.act == "silu2":
             x = F.silu(self.fc(x))
             return self.proj(x.square())
@@ -720,6 +724,11 @@ class MLP(nn.Module):
         elif self.act == "power_relu_mildgate":
             # Generic hard-select + power amplify + mild bounded refinement gate.
             h = torch.pow(torch.relu(self.fc(x)), self.act_power)
+            gate = self.act_gate_floor + (1.0 - self.act_gate_floor) * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h * gate)
+        elif self.act == "power_silu_mildgate":
+            # Smooth-selector counterpart to the ReLU family.
+            h = torch.pow(F.silu(self.fc(x)), self.act_power)
             gate = self.act_gate_floor + (1.0 - self.act_gate_floor) * torch.sigmoid(self.fc_gate(x))
             return self.proj(h * gate)
         elif self.act == "swirelu":

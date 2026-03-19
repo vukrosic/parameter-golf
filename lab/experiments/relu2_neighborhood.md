@@ -29,6 +29,8 @@ Rules for this lane:
 - ingredient-comparison pairs
 - no extra-seed confirmation yet
 - no `1000`-step extension yet
+- no broad micro-ablation grids
+- prefer small factorial-style ablations that answer larger questions
 
 ## Run Set
 
@@ -73,14 +75,10 @@ Wave 4:
 
 Wave 5:
 
-- `act11_power_relu18_500`
-- `act11_power_relu20_500`
-- `act11_power_relu23_500`
-- `act11_power_relu_mildgate18_500`
-- `act11_power_relu_mildgate20_500`
-- `act11_power_relu_mildgate23_500`
-- `act11_power_relu_mildgate20_floor07_500`
-- `act11_power_relu_mildgate23_floor07_500`
+- ReLU-family 2x2: hard selector, with/without square, with/without mild gate
+- SiLU-family 2x2: smooth selector, with/without square, with/without mild gate
+- bridge runs at exponent `2.2`
+- small gate-strength check only on the strongest hard-selector branch
 
 ## Current Results
 
@@ -186,3 +184,12 @@ Current discovery family:
 - `f(x) = relu(x)^p * (floor + (1 - floor) * sigmoid(x))`
 - search `p` near `2`
 - search gate floor in the mild range, not full free gating
+
+Current queue philosophy:
+
+- do not spray dense parameter grids
+- compare a few matched structures
+- each run should answer a real question:
+  hard vs smooth
+  linear vs square
+  ungated vs mild-gated
