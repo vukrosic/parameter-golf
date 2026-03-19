@@ -88,7 +88,8 @@ class Hyperparameters:
     adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
     grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.0))
 
-    # AttnRes mode: "none", "cumsum", "value_residual"
+    # AttnRes mode: "none", "cumsum", "value_residual", "value_residual_gated",
+    #   "value_residual_mid", "weighted", "weighted_vector"
     attnres_mode = os.environ.get("ATTNRES_MODE", "none")
 
 # -----------------------------
@@ -294,7 +295,7 @@ CONTROL_TENSOR_NAME_PATTERNS = tuple(
     pattern
     for pattern in os.environ.get(
         "CONTROL_TENSOR_NAME_PATTERNS",
-        "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights",
+        "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,v_gate_param,layer_weights",
     ).split(",")
     if pattern
 )
@@ -565,6 +566,7 @@ class CausalSelfAttention(nn.Module):
         num_kv_heads: int,
         rope_base: float,
         qk_gain_init: float,
+        v_gate: bool = False,
     ):
         super().__init__()
         if dim % num_heads != 0:
@@ -584,6 +586,7 @@ class CausalSelfAttention(nn.Module):
         self.proj._zero_init = True
         self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
         self.rotary = Rotary(self.head_dim, base=rope_base)
+        self.v_gate_param = nn.Parameter(torch.zeros(1, dtype=torch.float32)) if v_gate else None
 
     def forward(self, x: Tensor, v_residual: Tensor | None = None, return_v: bool = False) -> Tensor | tuple[Tensor, Tensor]:
         bsz, seqlen, dim = x.shape
@@ -592,7 +595,10 @@ class CausalSelfAttention(nn.Module):
         v = self.c_v(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim).transpose(1, 2)
         v0 = v if return_v else None
         if v_residual is not None:
-            v = v + v_residual
+            if self.v_gate_param is not None:
+                v = v + torch.sigmoid(self.v_gate_param.to(dtype=v.dtype)) * v_residual
+            else:
+                v = v + v_residual
         q = F.rms_norm(q, (q.size(-1),))
         k = F.rms_norm(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
@@ -637,11 +643,12 @@ class Block(nn.Module):
         mlp_mult: int,
         rope_base: float,
         qk_gain_init: float,
+        v_gate: bool = False,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
-        self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init)
+        self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init, v_gate=v_gate)
         self.mlp = MLP(dim, mlp_mult)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
@@ -691,6 +698,7 @@ class GPT(nn.Module):
         self.num_decoder_layers = num_layers - self.num_encoder_layers
         self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
         self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
+        use_v_gate = attnres_mode == "value_residual_gated"
         self.blocks = nn.ModuleList(
             [
                 Block(
@@ -700,10 +708,22 @@ class GPT(nn.Module):
                     mlp_mult,
                     rope_base,
                     qk_gain_init,
+                    v_gate=use_v_gate,
                 )
                 for i in range(num_layers)
             ]
         )
+        # Weighted inter-layer attention: each layer learns weights over all previous outputs
+        if attnres_mode == "weighted":
+            self.layer_weights = nn.ParameterList([
+                nn.Parameter(torch.zeros(i + 1, dtype=torch.float32)) for i in range(num_layers)
+            ])
+        elif attnres_mode == "weighted_vector":
+            self.layer_weights = nn.ParameterList([
+                nn.Parameter(torch.zeros(i + 1, model_dim, dtype=torch.float32)) for i in range(num_layers)
+            ])
+        else:
+            self.layer_weights = None
         self.final_norm = RMSNorm()
         self.lm_head = None if tie_embeddings else CastedLinear(model_dim, vocab_size, bias=False)
         if self.lm_head is not None:
@@ -722,32 +742,58 @@ class GPT(nn.Module):
         x = F.rms_norm(x, (x.size(-1),))
         x0 = x
         skips: list[Tensor] = []
+        mode = self.attnres_mode
+        is_vr = mode in ("value_residual", "value_residual_gated", "value_residual_mid")
 
         # AttnRes: cumsum accumulates attention outputs across layers
         attn_cumsum: Tensor | None = None
-        # AttnRes: value_residual stores first layer's V for reuse
+        # AttnRes: value_residual stores a source layer's V for reuse
         v_res: Tensor | None = None
+        # For value_residual_mid, capture from encoder midpoint instead of layer 0
+        vr_capture_layer = self.num_encoder_layers // 2 if mode == "value_residual_mid" else 0
+
+        # Weighted modes: store all layer outputs for weighted combination
+        if self.layer_weights is not None:
+            layer_outputs: list[Tensor] = [x]  # index 0 = embedding
 
         # First half stores skips; second half reuses them in reverse order.
         for i in range(self.num_encoder_layers):
-            ar = attn_cumsum if self.attnres_mode == "cumsum" else None
-            vr = v_res if self.attnres_mode == "value_residual" and i > 0 else None
-            need_v = self.attnres_mode == "value_residual" and i == 0
+            # Weighted modes: replace input with weighted combination of all previous outputs
+            if self.layer_weights is not None:
+                w = F.softmax(self.layer_weights[i].to(dtype=x.dtype), dim=0)
+                if w.ndim == 1:
+                    x = sum(w[j] * layer_outputs[j] for j in range(len(layer_outputs)))
+                else:
+                    x = sum(w[j][None, None, :] * layer_outputs[j] for j in range(len(layer_outputs)))
+            ar = attn_cumsum if mode == "cumsum" else None
+            vr = v_res if is_vr and i > vr_capture_layer else None
+            need_v = is_vr and i == vr_capture_layer
             if need_v:
                 x, attn_out, v_res = self.blocks[i](x, x0, attn_residual=ar, v_residual=None, return_v=True)
             else:
                 x, attn_out = self.blocks[i](x, x0, attn_residual=ar, v_residual=vr)
-            if self.attnres_mode == "cumsum":
+            if mode == "cumsum":
                 attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
             skips.append(x)
+            if self.layer_weights is not None:
+                layer_outputs.append(x)
         for i in range(self.num_decoder_layers):
             if skips:
                 x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            ar = attn_cumsum if self.attnres_mode == "cumsum" else None
-            vr = v_res if self.attnres_mode == "value_residual" else None
-            x, attn_out = self.blocks[self.num_encoder_layers + i](x, x0, attn_residual=ar, v_residual=vr)
-            if self.attnres_mode == "cumsum":
+            layer_idx = self.num_encoder_layers + i
+            if self.layer_weights is not None:
+                w = F.softmax(self.layer_weights[layer_idx].to(dtype=x.dtype), dim=0)
+                if w.ndim == 1:
+                    x = sum(w[j] * layer_outputs[j] for j in range(len(layer_outputs)))
+                else:
+                    x = sum(w[j][None, None, :] * layer_outputs[j] for j in range(len(layer_outputs)))
+            ar = attn_cumsum if mode == "cumsum" else None
+            vr = v_res if is_vr else None
+            x, attn_out = self.blocks[layer_idx](x, x0, attn_residual=ar, v_residual=vr)
+            if mode == "cumsum":
                 attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
+            if self.layer_weights is not None:
+                layer_outputs.append(x)
 
         x = self.final_norm(x).reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
@@ -899,6 +945,9 @@ def main() -> None:
     ]
     if base_model.skip_weights.numel() > 0:
         scalar_params.append(base_model.skip_weights)
+    if base_model.layer_weights is not None:
+        for lw in base_model.layer_weights:
+            scalar_params.append(lw)
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
     optimizer_tok = torch.optim.Adam(
         [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}],

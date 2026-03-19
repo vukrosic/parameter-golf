@@ -205,3 +205,6 @@ Record observations, surprises, and pivots here as work progresses.
 | 2026-03-19 | P1 | MATRIX_LR=0.06 leading (+0.006 BPB over baseline at 200 steps) |
 | 2026-03-19 | P2.5 | Paper read. Baseline already has resid_mix + skip_weights — AttnRes upgrades these |
 | 2026-03-19 | P2.5 | 4 variants designed: cumsum (0 params) → value_res → weighted (45) → weighted_vec (23K) |
+| 2026-03-19 | P2.5 | Phase 1 AttnRes complete: cumsum hurts (-0.007 BPB at 200 steps), value_residual consistently worse but gap closing (0.037→0.004 over 500 steps). Crossover projected ~step 1500-2000. |
+| 2026-03-19 | P2.5 | PLAN_v2 written: 5 phases, gated VR, mid-layer VR, weighted variants, scale to 13,780 steps. ~16h GPU total. |
+| 2026-03-19 | Post | "When Better Architecture Is Actually Just Different Initialization" — post drafted in lab/posts/ |
