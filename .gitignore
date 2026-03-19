@@ -16,3 +16,4 @@ checkpoints/
 results/**/train.log
 records/**/train.log
 !records/**/submission.json
+/my-life/
