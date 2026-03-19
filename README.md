@@ -195,3 +195,9 @@ sudo apt install tmux -y        # Debian/Ubuntu
 # Install Claude Code (if not already installed)
 curl -fsSL https://claude.ai/install.sh | bash
 
+
+tmux new-session -s claude 'claude --dangerously-skip-permissions'
+
+
+# Reattach to your session
+tmux attach -t claude
