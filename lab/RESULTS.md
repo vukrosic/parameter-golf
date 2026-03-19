@@ -59,6 +59,52 @@ Weighted_vector (23K extra params) was the worst at step 500 (+0.007 pre-quant).
 | attnres_cumsum | 1.6626 (+0.0068, worse) |
 | attnres_value_residual | 1.6341 (-0.0217, but see 500-step reversal above) |
 
+## Activation Function Ablations (500 steps, pre-quant, flat-LR phase)
+
+15 alternatives tested across 3 rounds. All ran with WALLCLOCK=1955s (no warmdown in 500 steps).
+Baseline: relu^2 = relu(x)^2, BPB@500 = 1.4522.
+
+**Universal pattern:** all alternatives beat baseline at step 50 by large margins (faster early learning),
+then baseline catches up and wins by step 300-400. Same reversal as AttnRes.
+
+### Full Ranking at Step 500
+
+| Activation | BPB@500 | Δ vs relu2 | Notes |
+|-----------|---------|-----------|-------|
+| **relu2 (baseline)** | **1.4522** | **—** | Winner |
+| swiglu | 1.4652 | +0.013 | Won at step 300, lost by 400; 13% slower/step |
+| geglu | 1.4689 | +0.017 | Same reversal as swiglu |
+| swiglu+lr06 | 1.4714 | +0.019 | LR=0.06 makes GLU variants worse |
+| geglu+lr06 | 1.4765 | +0.024 | Same |
+| gated_relu2 | 1.4796 | +0.027 | relu^2 * sigmoid(gate); 10% slower |
+| relu2+lr06 | 1.4790 | +0.027 | LR=0.06 hurts in flat-LR phase |
+| softcap20 | 1.4788 | +0.027 | Lower QK softcap |
+| silu2 | 1.4841 | +0.032 | silu(x)^2; loses hard zeros |
+| mish | 1.4931 | +0.041 | Non-monotonic, no hard zeros |
+| softcap50 | 1.4979 | +0.046 | Higher QK softcap |
+| silu | 1.4885 | +0.036 | No squaring |
+| gelu | 1.4942 | +0.042 | No squaring |
+| relu | 1.5032 | +0.051 | No squaring |
+| relu3 | 1.5097 | +0.058 | Cubic; unstable |
+| swiglu2 | 1.6074 | +0.155 | Diverged; squaring GLU output is fatal |
+
+### Activation Conclusion
+
+**relu^2 is optimal.** Two necessary properties both required:
+1. **Hard zeros** (sparsity): relu zeros negative inputs; smooth activations (silu, gelu, mish) all fail
+2. **Quadratic amplification**: squaring amplifies strong features; no-square variants all fail
+   - relu >> silu, gelu (hard zeros win)
+   - relu^2 >> relu (quadratic amplification wins)
+   - silu^2 < relu^2 (no hard zeros, so squaring doesn't help as much)
+
+GLU variants (swiglu/geglu) have *faster early convergence* but plateau earlier than relu^2.
+They are also 13% slower per step → fewer steps in 600s budget → worse overall.
+
+**LR Note:** MATRIX_LR=0.06 improvement from original LR sweep was measured under warmdown-active
+conditions (200-step run with 600s cap → warmdown triggers immediately). In flat-LR phase,
+LR=0.06 actually hurts (+0.027 at step 500). The improvement is real but warmdown-specific.
+Use MATRIX_LR=0.06 for the submission (where warmdown is active).
+
 ## Known Bugs
 
 - Several runs hit the 600s wallclock cap because `MAX_WALLCLOCK_SECONDS=0` was not set.

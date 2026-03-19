@@ -92,6 +92,10 @@ class Hyperparameters:
     #   "value_residual_mid", "weighted", "weighted_vector"
     attnres_mode = os.environ.get("ATTNRES_MODE", "none")
 
+    # MLP activation: "relu2" (default), "relu", "silu", "gelu", "swiglu", "geglu"
+    # GLU variants (swiglu/geglu) scale hidden dim to ~2/3 to match parameter count.
+    mlp_act = os.environ.get("MLP_ACT", "relu2")
+
 # -----------------------------
 # MUON OPTIMIZER 
 # -----------------------------
@@ -621,17 +625,49 @@ class CausalSelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
-    # relu^2 MLP from the original modded-nanogpt setup
-    def __init__(self, dim: int, mlp_mult: int):
+    def __init__(self, dim: int, mlp_mult: int, act: str = "relu2"):
         super().__init__()
-        hidden = mlp_mult * dim
+        self.act = act
+        is_glu = act in ("swiglu", "geglu", "swiglu2", "gated_relu2")
+        # GLU variants use 2/3 hidden to match parameter count (3 matrices vs 2).
+        hidden = (2 * mlp_mult * dim + 1) // 3 if is_glu else mlp_mult * dim
         self.fc = CastedLinear(dim, hidden, bias=False)
+        if is_glu:
+            self.fc_gate = CastedLinear(dim, hidden, bias=False)
         self.proj = CastedLinear(hidden, dim, bias=False)
         self.proj._zero_init = True
 
     def forward(self, x: Tensor) -> Tensor:
-        x = torch.relu(self.fc(x))
-        return self.proj(x.square())
+        if self.act == "relu2":
+            x = torch.relu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "relu":
+            return self.proj(torch.relu(self.fc(x)))
+        elif self.act == "silu":
+            return self.proj(F.silu(self.fc(x)))
+        elif self.act == "gelu":
+            return self.proj(F.gelu(self.fc(x)))
+        elif self.act == "silu2":
+            x = F.silu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "swiglu":
+            return self.proj(F.silu(self.fc(x)) * self.fc_gate(x))
+        elif self.act == "geglu":
+            return self.proj(F.gelu(self.fc(x)) * self.fc_gate(x))
+        elif self.act == "swiglu2":
+            x = F.silu(self.fc(x)) * self.fc_gate(x)
+            return self.proj(x.square())
+        elif self.act == "mish":
+            return self.proj(F.mish(self.fc(x)))
+        elif self.act == "relu3":
+            x = torch.relu(self.fc(x))
+            return self.proj(x * x.square())
+        elif self.act == "gated_relu2":
+            # relu2 with a learned sigmoid gate: sparsity + learned selection
+            h = torch.relu(self.fc(x)).square()
+            return self.proj(h * torch.sigmoid(self.fc_gate(x)))
+        else:
+            raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
 
 
 class Block(nn.Module):
@@ -644,12 +680,13 @@ class Block(nn.Module):
         rope_base: float,
         qk_gain_init: float,
         v_gate: bool = False,
+        mlp_act: str = "relu2",
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init, v_gate=v_gate)
-        self.mlp = MLP(dim, mlp_mult)
+        self.mlp = MLP(dim, mlp_mult, act=mlp_act)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
@@ -685,6 +722,7 @@ class GPT(nn.Module):
         rope_base: float,
         qk_gain_init: float,
         attnres_mode: str = "none",
+        mlp_act: str = "relu2",
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -709,6 +747,7 @@ class GPT(nn.Module):
                     rope_base,
                     qk_gain_init,
                     v_gate=use_v_gate,
+                    mlp_act=mlp_act,
                 )
                 for i in range(num_layers)
             ]
@@ -919,6 +958,7 @@ def main() -> None:
         rope_base=args.rope_base,
         qk_gain_init=args.qk_gain_init,
         attnres_mode=args.attnres_mode,
+        mlp_act=args.mlp_act,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
