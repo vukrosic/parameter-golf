@@ -87,6 +87,9 @@ class Hyperparameters:
     # Eval sequence length (can differ from train)
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 0))
 
+    # Skip heavy post-training eval (serialization + int8 roundtrip) for fast screening
+    skip_eval = bool(int(os.environ.get("SKIP_EVAL", "0")))
+
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
     head_lr = float(os.environ.get("HEAD_LR", 0.008))
@@ -805,7 +808,8 @@ def main() -> None:
 
     code = Path(__file__).read_text(encoding="utf-8")
     args = Hyperparameters()
-    zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)
+    if not args.skip_eval:
+        zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)
 
     # -----------------------------
     # DISTRIBUTED + CUDA SETUP
@@ -916,7 +920,10 @@ def main() -> None:
         if isinstance(module, CastedLinear):
             module.float()
     restore_low_dim_params_to_fp32(base_model)
-    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
+    if args.skip_eval:
+        compiled_model = base_model  # skip torch.compile for fast screening
+    else:
+        compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
     model: nn.Module = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
 
     # Optimizer split:
@@ -1175,6 +1182,12 @@ def main() -> None:
     # -----------------------------
     # Save the raw state (useful for debugging/loading in PyTorch directly), then always produce
     # the compressed int8+zlib artifact and validate the round-tripped weights.
+
+    if args.skip_eval:
+        log0("SKIP_EVAL=1: skipping serialization and int8 roundtrip eval")
+        if distributed:
+            dist.destroy_process_group()
+        return
 
     if master_process:
         torch.save(base_model.state_dict(), "final_model.pt")
