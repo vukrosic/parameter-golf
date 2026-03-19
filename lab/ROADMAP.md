@@ -100,27 +100,25 @@ Optimal schedule parameters. Run best config for 3000-5000 steps.
 
 ## Phase 2.5: AttnRes — Inter-layer Attention (PRIORITY)
 
-**Purpose**: Replace standard residual connections with weighted inter-layer attention.
-**Claim**: ~25% improvement for <5% overhead. If true, this is the single biggest win available.
+**Purpose**: Upgrade cross-layer information routing. The baseline already has `resid_mix` (embed only)
+and U-Net `skip_weights` (encoder→decoder). AttnRes generalizes this to ALL previous layers.
 
-### Why prioritize this
-- Adds negligible parameters (~4.5 KB) — fits easily in 16MB budget
-- Specifically benefits small/shallow models (our 9-layer, 512-dim architecture)
-- Better information routing > brute force scaling at this model size
+**Key insight**: The model already has primitive cross-layer connections. AttnRes is the principled upgrade.
 
-### Experiments
+### Experiments (run with best LR from Phase 1)
 
-- [ ] `attnres_v3_scalar`: Learnable skip weights (simplest test of hypothesis), 500 steps
-- [ ] `attnres_v1_full`: Full AttnRes with static queries, 500 steps
-- [ ] `attnres_v2_block`: Block AttnRes (embedding isolated, 2-4 blocks), 500 steps
+- [ ] `attnres_cumsum`: Cumulative attention output residual (0 extra params), 500 steps
+- [ ] `attnres_value_residual`: Cross-layer value residual from layer 0, 500 steps
+- [ ] `attnres_weighted`: Softmax-weighted combination of all prev layer outputs (45 params), 500 steps
+- [ ] `attnres_weighted_vector`: Per-dimension weights (23K params), 500 steps
 - [ ] Winner extended to 1000+ steps
-- [ ] Winner + deeper architecture (12 layers @ smaller dim to stay under 16MB)
+- [ ] Winner + 12-layer architecture (deeper model enabled by better routing)
 
 ### Details
-See `/lab/experiments/attnres/PLAN.md` and `/lab/research_papers/attnres.md`
+See `/lab/experiments/attnres/PLAN.md` (full implementation strategy) and `/lab/research_papers/attnres.md`
 
 ### Deliverable
-Best AttnRes variant with val_bpb improvement quantified. Content post with before/after results.
+Best AttnRes variant with val_bpb improvement quantified. Sponsored content post with before/after results.
 
 ---
 
@@ -204,4 +202,6 @@ Record observations, surprises, and pivots here as work progresses.
 
 | Date | Phase | Observation |
 |------|-------|-------------|
-| | | |
+| 2026-03-19 | P1 | MATRIX_LR=0.06 leading (+0.006 BPB over baseline at 200 steps) |
+| 2026-03-19 | P2.5 | Paper read. Baseline already has resid_mix + skip_weights — AttnRes upgrades these |
+| 2026-03-19 | P2.5 | 4 variants designed: cumsum (0 params) → value_res → weighted (45) → weighted_vec (23K) |

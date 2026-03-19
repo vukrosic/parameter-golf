@@ -86,6 +86,9 @@ class Hyperparameters:
     adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
     grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.0))
 
+    # AttnRes mode: "none", "cumsum", "value_residual"
+    attnres_mode = os.environ.get("ATTNRES_MODE", "none")
+
 # -----------------------------
 # MUON OPTIMIZER 
 # -----------------------------
@@ -580,11 +583,14 @@ class CausalSelfAttention(nn.Module):
         self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
         self.rotary = Rotary(self.head_dim, base=rope_base)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, v_residual: Tensor | None = None, return_v: bool = False) -> Tensor | tuple[Tensor, Tensor]:
         bsz, seqlen, dim = x.shape
         q = self.c_q(x).reshape(bsz, seqlen, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.c_k(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim).transpose(1, 2)
         v = self.c_v(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v0 = v if return_v else None
+        if v_residual is not None:
+            v = v + v_residual
         q = F.rms_norm(q, (q.size(-1),))
         k = F.rms_norm(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
@@ -600,7 +606,10 @@ class CausalSelfAttention(nn.Module):
             enable_gqa=(self.num_kv_heads != self.num_heads),
         )
         y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)
-        return self.proj(y)
+        out = self.proj(y)
+        if return_v:
+            return out, v0
+        return out
 
 
 class MLP(nn.Module):
@@ -636,13 +645,20 @@ class Block(nn.Module):
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
 
-    def forward(self, x: Tensor, x0: Tensor) -> Tensor:
+    def forward(self, x: Tensor, x0: Tensor, attn_residual: Tensor | None = None, v_residual: Tensor | None = None, return_v: bool = False) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
         mix = self.resid_mix.to(dtype=x.dtype)
         x = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
-        attn_out = self.attn(self.attn_norm(x))
+        if attn_residual is not None:
+            x = x + attn_residual
+        if return_v:
+            attn_out, v0 = self.attn(self.attn_norm(x), v_residual=v_residual, return_v=True)
+        else:
+            attn_out = self.attn(self.attn_norm(x), v_residual=v_residual)
         x = x + self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
         x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(self.mlp_norm(x))
-        return x
+        if return_v:
+            return x, attn_out, v0
+        return x, attn_out
 
 
 class GPT(nn.Module):
@@ -659,6 +675,7 @@ class GPT(nn.Module):
         logit_softcap: float,
         rope_base: float,
         qk_gain_init: float,
+        attnres_mode: str = "none",
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -666,6 +683,7 @@ class GPT(nn.Module):
         self.tie_embeddings = tie_embeddings
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
+        self.attnres_mode = attnres_mode
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
         self.num_encoder_layers = num_layers // 2
         self.num_decoder_layers = num_layers - self.num_encoder_layers
@@ -703,14 +721,31 @@ class GPT(nn.Module):
         x0 = x
         skips: list[Tensor] = []
 
+        # AttnRes: cumsum accumulates attention outputs across layers
+        attn_cumsum: Tensor | None = None
+        # AttnRes: value_residual stores first layer's V for reuse
+        v_res: Tensor | None = None
+
         # First half stores skips; second half reuses them in reverse order.
         for i in range(self.num_encoder_layers):
-            x = self.blocks[i](x, x0)
+            ar = attn_cumsum if self.attnres_mode == "cumsum" else None
+            vr = v_res if self.attnres_mode == "value_residual" and i > 0 else None
+            need_v = self.attnres_mode == "value_residual" and i == 0
+            if need_v:
+                x, attn_out, v_res = self.blocks[i](x, x0, attn_residual=ar, v_residual=None, return_v=True)
+            else:
+                x, attn_out = self.blocks[i](x, x0, attn_residual=ar, v_residual=vr)
+            if self.attnres_mode == "cumsum":
+                attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
             skips.append(x)
         for i in range(self.num_decoder_layers):
             if skips:
                 x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            x = self.blocks[self.num_encoder_layers + i](x, x0)
+            ar = attn_cumsum if self.attnres_mode == "cumsum" else None
+            vr = v_res if self.attnres_mode == "value_residual" else None
+            x, attn_out = self.blocks[self.num_encoder_layers + i](x, x0, attn_residual=ar, v_residual=vr)
+            if self.attnres_mode == "cumsum":
+                attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
 
         x = self.final_norm(x).reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
@@ -835,6 +870,7 @@ def main() -> None:
         logit_softcap=args.logit_softcap,
         rope_base=args.rope_base,
         qk_gain_init=args.qk_gain_init,
+        attnres_mode=args.attnres_mode,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
