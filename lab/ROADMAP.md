@@ -126,6 +126,12 @@ Best AttnRes variant with val_bpb improvement quantified. Sponsored content post
 
 **Purpose**: Find better depth/width/head tradeoffs within the 16MB cap.
 
+**Full ideas bank**: See `/lab/experiments/ideas/README.md` for 12 additional architecture/training ideas
+with literature review prompts and tiered prioritization. The ideas below are the original candidates;
+the ideas bank adds: QAT, shared-weight cycling, factorized embeddings, depthwise conv, GEGLU,
+sparse MoE, block-diagonal attention, progressive dims, SSM hybrid, byte fallback head, softmax
+temp annealing, and per-layer LR scaling.
+
 ### Size-Matched Architectures
 
 All configs must produce artifacts under 16,000,000 bytes after int8+zlib.
@@ -188,6 +194,32 @@ A config ready for 8xH100 submission with projected val_bpb.
 
 ---
 
+## Phase 5.5: Cross-Hardware Validation (REQUIRED before submission)
+
+**Purpose**: Empirically verify that L40S results transfer to 8xH100 before committing to a submission run.
+
+See `/lab/CROSS_HARDWARE_VALIDATION.md` for full protocol.
+
+### Research Questions
+- Q1: Does val_bpb at step N match between L40S and H100? (target: < 0.005 delta)
+- Q2: Does config ranking transfer? (critical: if A beats B on L40S, must beat B on H100)
+- Q3: Does time-based warmdown behave correctly on H100?
+- Q4: Does int8+zlib artifact match byte-for-byte?
+- Q5: Do AttnRes variants show same relative behavior?
+
+### Experiments
+- [ ] `h1_baseline_2000`: L40S baseline, 2000 steps, step-based schedule
+- [ ] `h2_baseline_500`: H100 baseline, 500 steps, step-based (for direct comparison)
+- [ ] `h2_baseline_600s`: H100 baseline, full 600s wall-clock
+- [ ] `h3_cross_compare`: Compare L40S vs H100 val_bpb at matched steps
+- [ ] `h4_winner_matched`: Run winning AttnRes variant on H100 at matched steps
+- [ ] `h5_submission`: Full 600s submission run on H100
+
+### Deliverable
+Confidence level (high/medium/low) that L40S→H100 transfer is reliable. Go/no-go for submission.
+
+---
+
 ## Phase 6: 8xH100 Submission
 
 - [ ] Run winning config on 8xH100 with MAX_WALLCLOCK_SECONDS=600
@@ -208,3 +240,4 @@ Record observations, surprises, and pivots here as work progresses.
 | 2026-03-19 | P2.5 | Phase 1 AttnRes complete: cumsum hurts (-0.007 BPB at 200 steps), value_residual consistently worse but gap closing (0.037→0.004 over 500 steps). Crossover projected ~step 1500-2000. |
 | 2026-03-19 | P2.5 | PLAN_v2 written: 5 phases, gated VR, mid-layer VR, weighted variants, scale to 13,780 steps. ~16h GPU total. |
 | 2026-03-19 | Post | "When Better Architecture Is Actually Just Different Initialization" — post drafted in lab/posts/ |
+| 2026-03-19 | P5.5 | Cross-hardware validation plan written. 5 research questions, protocol for L40S↔H100 comparison. |
