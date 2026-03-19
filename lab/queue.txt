@@ -8,9 +8,3 @@
 # Format:
 # <name> <steps> [ENV_VAR=value ...]
 
-act4_swiglu2_500 500 MLP_ACT=swiglu2
-act5_swiglu_ctrl_500 500 MLP_ACT=swiglu
-act5_silu2_500 500 MLP_ACT=silu2
-act5_reluglu_500 500 MLP_ACT=reluglu
-act5_relu2_lingate_500 500 MLP_ACT=relu2_lingate
-act5_relu2_postsigmoid_500 500 MLP_ACT=relu2_postsigmoid
