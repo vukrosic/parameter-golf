@@ -2,21 +2,16 @@ import subprocess
 import os
 import time
 import sys
+import threading
 
-# Define experiments to run: (name, steps, env_overrides)
-EXPERIMENTS = [
-    ("arch_L10_D448_H8_KV8_M2_1000", 1000, {"NUM_LAYERS": "10", "MODEL_DIM": "448", "NUM_HEADS": "8", "NUM_KV_HEADS": "8", "MLP_MULT": "2", "MATRIX_LR": "0.06"}),
-    ("arch_L9_D480_H8_KV8_M2_1000", 1000, {"NUM_LAYERS": "9", "MODEL_DIM": "480", "NUM_HEADS": "8", "NUM_KV_HEADS": "8", "MLP_MULT": "2", "MATRIX_LR": "0.06"}),
-    ("arch_L12_D448_H8_KV8_M1_1000", 1000, {"NUM_LAYERS": "12", "MODEL_DIM": "448", "NUM_HEADS": "8", "NUM_KV_HEADS": "8", "MLP_MULT": "1", "MATRIX_LR": "0.06"}),
-    ("arch_L15_D384_H6_KV6_M2_1000", 1000, {"NUM_LAYERS": "15", "MODEL_DIM": "384", "NUM_HEADS": "6", "NUM_KV_HEADS": "6", "MLP_MULT": "2", "MATRIX_LR": "0.06"}),
-    ("arch_L20_D320_H5_KV5_M2_1000", 1000, {"NUM_LAYERS": "20", "MODEL_DIM": "320", "NUM_HEADS": "5", "NUM_KV_HEADS": "5", "MLP_MULT": "2", "MATRIX_LR": "0.06"}),
-]
+# GPU Scheduler that watches lab/queue.txt for new experiments
+# Usage: python3 lab/gpu_scheduler.py
 
 def get_gpu_status():
     """Returns a list of GPU utilization percentages from nvidia-smi"""
     try:
         result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'],
+            ['nvidia-smi', '--query-gpu=index', '--format=csv,noheader,nounits'],
             capture_output=True, text=True, check=True
         )
         return [int(x) for x in result.stdout.strip().split('\n')]
@@ -34,7 +29,10 @@ def run_experiment(gpu_id, name, steps, env):
     log_file = f"logs/{name}_parallel.log"
     print(f"🚀 Starting {name} on GPU {gpu_id}. Logging to {log_file}")
     
-    with open(log_file, "w") as f:
+    # Create logs directory if it doesn't exist
+    os.makedirs("logs", exist_ok=True)
+    
+    with open(log_file, "a") as f:
         return subprocess.Popen(
             ["bash", "lab/run_experiment.sh", name, str(steps)],
             env=cmd_env,
@@ -42,38 +40,91 @@ def run_experiment(gpu_id, name, steps, env):
             cwd=os.getcwd()
         )
 
+def load_queue():
+    """Reads lab/queue.txt and returns list of (name, steps, env_dict)"""
+    queue_path = "lab/queue.txt"
+    if not os.path.exists(queue_path):
+        return []
+    
+    experiments = []
+    with open(queue_path, "r") as f:
+        lines = f.readlines()
+    
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        
+        # Format: <name> <steps> [ENV_VAR=value ...]
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+            
+        name = parts[0]
+        steps = parts[1]
+        env = {}
+        for part in parts[2:]:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                env[k] = v
+        
+        experiments.append((name, steps, env))
+    
+    return experiments
+
+def pop_from_queue(name):
+    """Removes the line starting with name from lab/queue.txt"""
+    queue_path = "lab/queue.txt"
+    if not os.path.exists(queue_path):
+        return
+    with open(queue_path, "r") as f:
+        lines = f.readlines()
+    
+    with open(queue_path, "w") as f:
+        found = False
+        for line in lines:
+            if not found and line.strip().startswith(name):
+                found = True
+                continue
+            f.write(line)
+
 def main():
-    gpu_count = len(get_gpu_status())
-    if gpu_count == 0:
+    gpu_ids = get_gpu_status()
+    if not gpu_ids:
         print("❌ No GPUs found.")
         sys.exit(1)
     
-    print(f"🔍 Found {gpu_count} GPUs.")
+    print(f"🔍 Found {len(gpu_ids)} GPUs: {gpu_ids}")
     
-    queue = list(EXPERIMENTS)
-    running_processes = {} # gpu_id -> Popen object
+    running_processes = {} # gpu_id -> (Popen object, name)
 
-    while queue or running_processes:
+    print("🛰  Scheduler watching lab/queue.txt (Append experiments there)")
+    
+    # Main loop
+    while True:
         # Check running processes
         finished_gpus = []
-        for gpu_id, proc in running_processes.items():
+        for gpu_id, (proc, name) in running_processes.items():
             if proc.poll() is not None:
-                print(f"✅ Experiment finished on GPU {gpu_id}")
+                print(f"✅ Experiment '{name}' finished on GPU {gpu_id}")
                 finished_gpus.append(gpu_id)
         
         for gpu_id in finished_gpus:
             del running_processes[gpu_id]
         
-        # Try to assign new experiments
+        # Try to assign new experiments from lab/queue.txt
+        queue = load_queue()
         if queue:
-            for gpu_id in range(gpu_count):
+            for gpu_id in gpu_ids:
                 if gpu_id not in running_processes:
-                    name, steps, env = queue.pop(0)
-                    proc = run_experiment(gpu_id, name, steps, env)
-                    running_processes[gpu_id] = proc
                     if not queue:
                         break
+                    name, steps, env = queue.pop(0)
+                    proc = run_experiment(gpu_id, name, steps, env)
+                    running_processes[gpu_id] = (proc, name)
+                    pop_from_queue(name)
         
+        # Idle wait
         time.sleep(10)
 
 if __name__ == "__main__":
