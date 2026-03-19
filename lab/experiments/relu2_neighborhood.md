@@ -71,6 +71,17 @@ Wave 4:
 - `act10_mild_gated_relu2_500`
 - `act10_mild_gated_relu22_500`
 
+Wave 5:
+
+- `act11_power_relu18_500`
+- `act11_power_relu20_500`
+- `act11_power_relu23_500`
+- `act11_power_relu_mildgate18_500`
+- `act11_power_relu_mildgate20_500`
+- `act11_power_relu_mildgate23_500`
+- `act11_power_relu_mildgate20_floor07_500`
+- `act11_power_relu_mildgate23_floor07_500`
+
 ## Current Results
 
 | Run | BPB | Read |
@@ -169,3 +180,9 @@ Best modification so far:
 
 - keep the ReLU² core
 - add only a light gate
+
+Current discovery family:
+
+- `f(x) = relu(x)^p * (floor + (1 - floor) * sigmoid(x))`
+- search `p` near `2`
+- search gate floor in the mild range, not full free gating

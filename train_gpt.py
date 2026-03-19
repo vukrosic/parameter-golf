@@ -95,6 +95,8 @@ class Hyperparameters:
     # MLP activation: "relu2" (default), "relu", "silu", "gelu", "swiglu", "geglu"
     # GLU variants scale hidden dim to ~2/3 to match parameter count.
     mlp_act = os.environ.get("MLP_ACT", "relu2")
+    act_power = float(os.environ.get("ACT_POWER", 2.0))
+    act_gate_floor = float(os.environ.get("ACT_GATE_FLOOR", 0.5))
 
 # -----------------------------
 # MUON OPTIMIZER 
@@ -625,15 +627,18 @@ class CausalSelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, dim: int, mlp_mult: int, act: str = "relu2"):
+    def __init__(self, dim: int, mlp_mult: int, act: str = "relu2", act_power: float = 2.0, act_gate_floor: float = 0.5):
         super().__init__()
         self.act = act
+        self.act_power = act_power
+        self.act_gate_floor = act_gate_floor
         is_glu = act in (
             "swiglu",
             "geglu",
             "swiglu2",
             "gated_relu2",
             "mild_gated_relu2",
+            "power_relu_mildgate",
             "swirelu",
             "swirelu2",
             "relu2_softplus_gate",
@@ -676,6 +681,9 @@ class MLP(nn.Module):
         elif self.act == "relu25":
             x = torch.relu(self.fc(x))
             return self.proj(torch.pow(x, 2.5))
+        elif self.act == "power_relu":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, self.act_power))
         elif self.act == "silu2":
             x = F.silu(self.fc(x))
             return self.proj(x.square())
@@ -708,6 +716,11 @@ class MLP(nn.Module):
             # Same mild gate idea with slightly stronger-than-square amplification.
             h = torch.pow(torch.relu(self.fc(x)), 2.2)
             gate = 0.5 + 0.5 * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h * gate)
+        elif self.act == "power_relu_mildgate":
+            # Generic hard-select + power amplify + mild bounded refinement gate.
+            h = torch.pow(torch.relu(self.fc(x)), self.act_power)
+            gate = self.act_gate_floor + (1.0 - self.act_gate_floor) * torch.sigmoid(self.fc_gate(x))
             return self.proj(h * gate)
         elif self.act == "swirelu":
             # Mix ReLU sparsity on the value path with SwiGLU's smooth gate.
@@ -749,12 +762,14 @@ class Block(nn.Module):
         qk_gain_init: float,
         v_gate: bool = False,
         mlp_act: str = "relu2",
+        act_power: float = 2.0,
+        act_gate_floor: float = 0.5,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init, v_gate=v_gate)
-        self.mlp = MLP(dim, mlp_mult, act=mlp_act)
+        self.mlp = MLP(dim, mlp_mult, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
@@ -791,6 +806,8 @@ class GPT(nn.Module):
         qk_gain_init: float,
         attnres_mode: str = "none",
         mlp_act: str = "relu2",
+        act_power: float = 2.0,
+        act_gate_floor: float = 0.5,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -816,6 +833,8 @@ class GPT(nn.Module):
                     qk_gain_init,
                     v_gate=use_v_gate,
                     mlp_act=mlp_act,
+                    act_power=act_power,
+                    act_gate_floor=act_gate_floor,
                 )
                 for i in range(num_layers)
             ]
@@ -1027,6 +1046,8 @@ def main() -> None:
         qk_gain_init=args.qk_gain_init,
         attnres_mode=args.attnres_mode,
         mlp_act=args.mlp_act,
+        act_power=args.act_power,
+        act_gate_floor=args.act_gate_floor,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
