@@ -1,16 +1,17 @@
 # Active job queue for gpu_monitor.sh
 # Format: <name> <steps> [ENV_VAR=value ...]
-# Lines with "# DONE" are skipped.
+# Lines with "# DONE" are skipped. GPU 2 is dead (SKIP_GPUS=2).
 
-# Wave 23 retry: leaky07 crashed
-act23_leaky07 500 MLP_ACT=leaky_relu2_07
+# Wave 23 retries (500 steps, ~8 min)
+act23_leaky07_r2 500 MLP_ACT=leaky_relu2_07  # DONE
+act23_pow15_r2 500 MLP_ACT=relu_pow15  # DONE
 
-# Wave 24: Long runs to test if relu² overtakes (6000 steps, ~100 min each)
-# The gap relu²→abs² halves every ~1000 steps. By 6000 we'll see if it crosses.
-# Checkpointing every 500 steps for curve analysis.
-act24_relu2_6000 6000 MLP_ACT=relu2 CHECKPOINT_EVERY=500
-act24_abs2_6000 6000 MLP_ACT=abs2 CHECKPOINT_EVERY=500
-act24_leaky05_6000 6000 MLP_ACT=leaky_relu2_05 CHECKPOINT_EVERY=500
+# Wave 24: Long runs — does relu² overtake? (6000 steps ≈ 100 min each)
+# Checkpoints every 500 for learning curve analysis.
+act24_relu2_6000 6000 MLP_ACT=relu2 CHECKPOINT_EVERY=500  # DONE
+act24_abs2_6000 6000 MLP_ACT=abs2 CHECKPOINT_EVERY=500  # DONE
+act24_leaky05_6000 6000 MLP_ACT=leaky_relu2_05 CHECKPOINT_EVERY=500  # DONE
 
-# Wave 23 fill: leak rate sweep data point + relu_pow15
-act23_leaky_pow15 500 MLP_ACT=relu_pow15
+# Retries (crashed on GPU 4 CUDA init)
+act24_relu2_6000_r2 6000 MLP_ACT=relu2 CHECKPOINT_EVERY=500  # DONE
+act24_leaky05_6000_r2 6000 MLP_ACT=leaky_relu2_05 CHECKPOINT_EVERY=500  # DONE

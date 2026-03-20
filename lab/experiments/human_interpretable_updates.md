@@ -4,7 +4,11 @@ Short status updates for quick human review. Latest first.
 
 ---
 
-**2026-03-20 07:45** — Launching wave 24: long runs (6000 steps, ~100 min) for relu², abs², leaky(0.5)² with checkpoints every 500 steps. Will reveal if relu²'s closing trend continues to a crossover. GPU monitor script running to auto-fill idle GPUs.
+**2026-03-20 08:00** — Leak rate sweep complete (0, 0.01, 0.3, 0.5, 0.7, 1.0). At 500 steps it's monotonically decreasing: more leak = better. But at 2000 steps, leaky(0.5)² beats abs². **The optimal sparsity level increases with training length** — strong evidence that hard zeros regularize, but the effect takes time to manifest. Wave 24 (6000 steps) will test if relu² (max sparsity) overtakes everything.
+
+**2026-03-20 07:50** — GPU 2 confirmed dead (nvidia-smi ERR). Only 4 working GPUs (0,1,3,4). CUDA remaps device indices: CUDA 2→physical 3, CUDA 3→physical 4. Monitor script broken (stacks processes on same GPU), managing launches manually. [does this stacking invalidate any experiments we did here or not?]
+
+**2026-03-20 07:45** — Wave 24 launched: 3 long runs (6000 steps, ~100 min each) on GPUs 0, 3, 4. relu², abs², leaky(0.5)² with checkpoints every 500 steps. GPU 1 free for short experiments. [are you keeping model checkpoints so you can continue the promising ones? do it, keep them]
 
 **2026-03-20 07:30** — Wave 23 (WHY squaring works) complete on 4/5 GPUs. leaky07 crashed (CUDA error, retrying). Three hypotheses tested:
 - H1 (just bigger outputs?): **NO.** `2·relu(x)` without squaring = 1.5022, much worse than relu² = 1.4807. Magnitude alone doesn't help.

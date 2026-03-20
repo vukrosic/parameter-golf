@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 
 QUEUE="${1:-lab/active_queue.txt}"
 POLL=60
+SKIP_GPUS="${SKIP_GPUS:-2}"  # comma-separated list of dead/broken GPUs to skip
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
@@ -21,8 +22,13 @@ get_busy_gpus() {
 
 get_free_gpus() {
     local busy=$(get_busy_gpus | tr '\n' '|' | sed 's/|$//')
+    local skip=$(echo "$SKIP_GPUS" | tr ',' '|')
     for i in $(nvidia-smi --query-gpu=index --format=csv,noheader); do
         i=$(echo "$i" | tr -d ' ')
+        # Skip broken GPUs
+        if echo "$i" | grep -qE "^($skip)$"; then
+            continue
+        fi
         if [ -z "$busy" ] || ! echo "$i" | grep -qE "^($busy)$"; then
             echo "$i"
         fi

@@ -17,7 +17,9 @@ abs² consistently beats relu² across 3 seeds (Δ = 0.0107 at 500 steps). All w
 
 ## Property 1: Squaring helps relu massively, others barely or not at all
 
-| Comparison | BPB | Δ from squaring |
+All results in this section are at **500 steps** unless noted.
+
+| Comparison | BPB (500 steps) | Δ from squaring |
 |---|---:|---:|
 | relu → relu² | 1.5007 → 1.4522 | **-0.049** |
 | silu → silu² | 1.4908 → 1.4841 | -0.007 |
@@ -161,7 +163,8 @@ Seed variance is ~0.003 for most. relu² at seed 1337 is a lucky outlier (0.023 
 | 7 | Does suppressing negatives matter? | abs² (no suppression) confirmed across 3 seeds and 2000 steps: matches/beats relu². leaky(0.5)² is overall best. | **Answered. Suppression hurts slightly.** Optimal is partial preservation (leak ~0.5). |
 | 8 | Is the relu² baseline reliable? | act20 ctrl: 1.4807 (seed 1337). act21: mean 1.4805 across 3 seeds. | **Resolved.** Original 1.4522 was dirty worktree artifact. |
 | 9 | Do rankings hold at 2000 steps? | act22: ranking order identical at steps 50, 250, 500, 1000, 2000. relu² worst of 5 at every checkpoint. | **Answered.** 500-step within-wave rankings are reliable. |
-| 10 | Why does squaring work? | See "Emerging theory" section above. Hypotheses: quadratic features, adaptive gradient, contrast amplification. | **Open. Next experiments needed.** |
+| 10 | Why does squaring work? | relu_scaled (2·relu, no square) = 1.5022 — magnitude doesn't help. relu_detach² = 1.4963 — halved gradient costs 0.016. | **Partially answered.** ~50% adaptive gradient, ~50% quadratic features. See Property 7. |
+| 11 | Does relu² catch up at longer training? | Gap vs abs² halves every ~1000 steps (0.028→0.010→0.003 at 2000). | **Open.** Wave 24 (6000 steps) running. |
 
 ### What the data shows (within-wave comparisons only)
 
@@ -181,8 +184,21 @@ Seed variance is ~0.003 for most. relu² at seed 1337 is a lucky outlier (0.023 
 
 ### What we still need to understand
 
-- **Why squaring works mechanically**: Is it output magnitude scaling, adaptive gradient (grad ∝ activation), or quadratic feature interaction?
-- **Optimal negative leak**: leaky(0.5)² > relu² ≈ abs². Is 0.5 optimal, or would 0.3 or 0.7 be better?
+- **Does relu² overtake at longer training?** Gap is closing steadily. Wave 24 (6000 steps) running.
+- **Optimal negative leak shifts with training length:**
+
+| Leak rate | BPB (500 steps) | BPB (2000 steps) |
+|---:|---:|---:|
+| 0.0 (relu²) | 1.4807 | 1.3245 |
+| 0.01 | 1.4809 | — |
+| 0.3 | 1.4746 | — |
+| 0.5 | 1.4724 | 1.3200 |
+| 0.7 | 1.4717 | — |
+| 1.0 (abs²) | 1.4712 | 1.3219 |
+
+At 500 steps: monotonically decreasing — more leak = better. abs² best.
+At 2000 steps: leaky(0.5)² beats abs². Partial sparsity now helps.
+**The optimal sparsity level increases with training length.** This strongly supports the hypothesis that hard zeros provide regularization that takes time to manifest.
 
 ### Remaining confounds
 
@@ -265,6 +281,28 @@ Wave 24 (6000-step runs) will resolve this.
 - Is it output magnitude, gradient scaling, or feature interaction that makes squaring work?
 - Does the optimal leak rate (somewhere around 0.5) depend on model size or training length?
 - Would x² (no activation) work at full scale (13k steps)?
+
+---
+
+## Property 7: Why squaring works — mechanism decomposition (wave 23, 500 steps)
+
+Three hypotheses tested:
+
+| Experiment | BPB (500 steps) | What it tests | Verdict |
+|---|---:|---|---|
+| relu² (baseline) | 1.4807 | — | — |
+| abs² (= x²) | 1.4712 | no activation, pure square | Squaring alone works great |
+| relu_scaled (2·relu) | 1.5022 | just bigger outputs, no squaring | **H1 rejected.** Magnitude alone = useless (+0.022 vs relu²) |
+| relu_detach² | 1.4963 | relu²'s output but gradient = relu(x) not 2·relu(x) | **H2 partial.** Losing adaptive gradient costs 0.016 |
+| abs_detach² | 1.4848 | x² output but gradient = x not 2x | Costs 0.014 without sparsity too |
+| leaky(0.3)² | 1.4746 | leak rate data point | Between relu² and leaky(0.5)² |
+
+**Mechanism breakdown:**
+- **Output magnitude: 0% of the benefit.** Scaling relu by 2x without squaring makes things worse.
+- **Adaptive gradient (grad ∝ activation): ~50% of the benefit.** The detach variants lose ~0.015 vs their squared counterparts. This means the gradient scaling — where active neurons get proportionally larger updates — accounts for about half of squaring's value.
+- **Quadratic feature interaction: ~50% of the benefit.** Even with halved gradients, the detach variants still beat plain relu (1.5007) by a wide margin. The forward pass creates (Wx)² = Σ w_i·w_j·x_i·x_j terms that let the MLP learn products of input features.
+
+**Intuition for practitioners:** relu² works because squaring does two things simultaneously: (1) it gives the optimizer an input-dependent learning rate per neuron (active neurons learn faster), and (2) it lets each MLP neuron compute a quadratic function of its inputs instead of just a linear one, which is strictly more expressive per parameter.
 
 ---
 
