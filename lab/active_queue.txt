@@ -1,0 +1,16 @@
+# Active job queue for gpu_monitor.sh
+# Format: <name> <steps> [ENV_VAR=value ...]
+# Lines with "# DONE" are skipped.
+
+# Wave 23 retry: leaky07 crashed
+act23_leaky07 500 MLP_ACT=leaky_relu2_07
+
+# Wave 24: Long runs to test if relu² overtakes (6000 steps, ~100 min each)
+# The gap relu²→abs² halves every ~1000 steps. By 6000 we'll see if it crosses.
+# Checkpointing every 500 steps for curve analysis.
+act24_relu2_6000 6000 MLP_ACT=relu2 CHECKPOINT_EVERY=500
+act24_abs2_6000 6000 MLP_ACT=abs2 CHECKPOINT_EVERY=500
+act24_leaky05_6000 6000 MLP_ACT=leaky_relu2_05 CHECKPOINT_EVERY=500
+
+# Wave 23 fill: leak rate sweep data point + relu_pow15
+act23_leaky_pow15 500 MLP_ACT=relu_pow15

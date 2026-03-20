@@ -1,5 +1,7 @@
 # Activation Function Ablation: What We Know and Don't Know
 
+**Scope:** These experiments vary the **MLP activation function only**. The activation is applied inside the `MLP` class (`train_gpt.py:630`) between the up-projection (`fc`) and down-projection (`proj`). Attention uses separate mechanisms (RoPE, GQA, softcapping) and is unchanged across all experiments. The default is `relu²`: `proj(relu(fc(x))²)`.
+
 Goal: understand which abstract properties make relu² work, not just rank functions.
 
 **Baseline resolved (act20/act21/act22).** The original relu² score (1.4522) was from a dirty worktree and is not comparable. On current clean code:
@@ -214,30 +216,31 @@ All top candidates from 500-step ablations were run to 2000 steps (wave 22, same
 
 **Findings:**
 
-1. **relu² is the worst of all 5 squared variants at every checkpoint from step 50 to step 2000.** It never catches up or overtakes. The common claim that relu²'s hard zeros are beneficial is not supported — variants that preserve negative signal consistently outperform.
+1. **relu² trails all 4 alternatives at every checkpoint from step 50 to step 2000.** However, the gap is **steadily closing** after step 250. This is NOT just convergence to lower BPB — relu² is specifically gaining on the others.
 
-2. **Rankings at 500 steps perfectly predict rankings at 2000 steps** (within the same wave/code). The earlier cross-wave confusion was from code changes between waves, not from rankings shifting during training. 500 steps is sufficient for within-wave ablations.
+2. **Gap closing rate (relu² vs abs²):** 0.028 (step 100) → 0.010 (250) → 0.008 (500) → 0.006 (1000) → 0.003 (2000). The gap roughly halves every ~1000 steps. **If this trend continues, relu² could match or overtake abs² by ~6000-8000 steps.** This suggests hard zeros may have a long-run benefit (regularization? feature selection?) that only emerges with extended training.
 
-3. **The gap compresses in absolute terms** (0.017 at step 50 → 0.005 at step 2000) but this is expected as all runs converge to lower BPB. The ranking order is stable.
+3. **Rankings at 500 steps predict rankings at 2000 steps** (within the same wave/code), but the gaps are compressing. 500 steps is sufficient for coarse ranking but NOT for determining convergence behavior. Longer runs (6000+) are needed to see if the trend reverses.
 
-4. **No candidate clears the 0.005-nat submission threshold** vs relu² at 2000 steps (leaky is closest at 0.0046). These are meaningful for understanding but not for leaderboard purposes.
+4. **No candidate clears the 0.005-nat submission threshold** vs relu² at 2000 steps (leaky is closest at 0.0046). But this may reverse at longer training.
 
-5. **leaky_relu(0.5)² is the overall winner** — consistently best or tied-best across all training lengths. This is relu with 50% negative signal preserved, then squared. It suggests the optimal sparsity level is "some but not total".
+5. **leaky_relu(0.5)² leads through 2000 steps** but its advantage over relu² is shrinking more slowly than abs²'s advantage. If forced to bet on a winner at 13k steps, relu² or leaky(0.5)² are both plausible.
+
+6. **Critical open question:** does relu²'s hard-zero sparsity provide a regularization benefit that takes many steps to manifest? The closing gap is consistent with this hypothesis but unproven. Wave 24 (6000-step runs) will test this.
 
 ---
 
-## Emerging theory: Why relu² works (and why it's not about relu)
+## Emerging theory: Why relu² works
 
-Across 40+ experiments covering hard zeros, soft zeros, gates, thresholds, exponents, and negative signal preservation, the evidence points to a single mechanism:
+Across 40+ experiments and 2000-step validation runs, we can separate what's confirmed from what's hypothesized.
 
-**The squaring is the entire story. The relu is incidental.**
+**Confirmed: the squaring is the primary mechanism.**
 
 Evidence:
-- abs² (= x², no activation at all) matches or beats relu² at every training length
-- leaky_relu(0.5)² (half the sparsity) is consistently the best variant
-- silu², which has a complex nonlinear shape before squaring, barely benefits from squaring (-0.007 vs relu's -0.049)
-- The less processing before squaring, the better the result (abs² > elu² > softplus² > clamp variants)
-- Hard zeros don't predict performance (softplus² beats clamp(silu,0)² despite having no zeros)
+- All squared variants (relu², abs², leaky², selu², softshrink²) converge to within 0.005 of each other at 2000 steps
+- Without squaring, relu is the *worst* standard activation (1.5007 vs silu 1.4908)
+- Squaring helps relu by 0.049 but silu by only 0.007 — the simpler the pre-squaring function, the more squaring helps
+- p=2 is optimal; p=1 loses 0.026, p=3 diverges
 
 **Why squaring works (hypothesis):**
 
@@ -246,7 +249,15 @@ Squaring `f(x)²` applied to a linear projection `Wx` creates:
 2. **Adaptive gradient scaling**: gradient of x² = 2x, so neurons with larger activations get proportionally larger gradients. This is a natural per-neuron adaptive learning rate.
 3. **Contrast amplification**: values in (0,1) are compressed toward 0, values > 1 are amplified. This sharpens feature selection.
 
-**Why relu specifically?** relu is the simplest function you can put before squaring — a linear passthrough with zeros. It doesn't add value over identity (abs²), but it also doesn't hurt much. relu² became the default because relu was already standard, not because the combination is optimal.
+Wave 23 tests H1 (relu_scaled) and H2 (relu_detach2, abs_detach2) directly.
+
+**NOT confirmed: whether relu's hard zeros help or hurt long-term.**
+
+At 2000 steps, relu² trails all alternatives. But the gap is **closing at every checkpoint** — relu² gains ~0.003 per 1000 steps vs abs². Two competing interpretations:
+- **Bull case for zeros:** hard zeros provide implicit regularization (sparser representations, less overfitting) that takes many steps to manifest. relu² could overtake at 6000+ steps.
+- **Bear case for zeros:** the gap is just converging to a small residual, like ~0.002, and relu² never actually catches up. The closing trend is just BPB compression.
+
+Wave 24 (6000-step runs) will resolve this.
 
 **Why squaring doesn't help silu/gelu:** These functions apply a smooth nonlinearity (sigmoid gate, error function) before the squaring. The squaring then amplifies the artifacts of that nonlinearity — the slight negative values, the compression of large values, the sigmoid saturation. Squaring a clean linear signal (relu, identity) amplifies the signal. Squaring a preprocessed signal amplifies the preprocessing noise.
 
