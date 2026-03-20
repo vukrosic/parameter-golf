@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 QUEUE="${1:-lab/active_queue.txt}"
 POLL=60
-SKIP_GPUS="${SKIP_GPUS:-2}"  # comma-separated list of dead/broken GPUs to skip
+SKIP_GPUS="${SKIP_GPUS:-2,4}"  # comma-separated list of dead/broken GPUs to skip
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 

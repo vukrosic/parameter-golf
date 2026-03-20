@@ -23,7 +23,7 @@ class GPUMonitor:
                 'nvidia-smi', 
                 '--query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu',
                 '--format=csv,noheader,nounits'
-            ], capture_output=True, text=True, timeout=5)
+            ], capture_output=True, text=True, timeout=30)
             
             if result.returncode == 0:
                 lines = result.stdout.strip().split('\n')
@@ -40,6 +40,8 @@ class GPUMonitor:
                             'temperature': int(parts[5])
                         })
                 return stats
+        except subprocess.TimeoutExpired:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⏳ nvidia-smi timed out...")
         except Exception as e:
             print(f"Error getting GPU stats: {e}")
         return []
@@ -52,6 +54,9 @@ class GPUMonitor:
         while self.running:
             stats = self.get_gpu_stats()
             if stats:
+                # Clear screen (optional, but makes it easier to 'follow')
+                # sys.stdout.write("\033[H\033[2J")
+                
                 timestamp = datetime.now().strftime("%H:%M:%S")
                 print(f"\n[{timestamp}] GPU Status:")
                 

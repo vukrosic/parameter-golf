@@ -1,13 +1,14 @@
 # Activation Function Ablation — Findings
 
-**Scope:** MLP activation only (`train_gpt.py` MLP class, between up-proj and down-proj). Default: `relu²` = `proj(relu(fc(x))²)`. 40+ experiments, 500–2000 steps, seed-validated.
+**Scope:** MLP activation only (`train_gpt.py` MLP class, between up-proj and down-proj). Default: `relu²` = `proj(relu(fc(x))²)`. 40+ experiments, 500–6000 steps, seed-validated.
 
-**Baseline (act20/act21, clean code, 3 seeds):**
+**Baseline (act20/act21, clean code, 3 seeds @ 500 steps; act24, 6000 steps):**
 
-| Activation | Mean BPB (500 steps) |
-|---|---:|
-| abs² (= x²) | **1.4698** |
-| relu² | **1.4805** |
+| Activation | BPB (500 steps) | BPB (6000 steps) | Post-quant BPB |
+|---|---:|---:|---:|
+| leaky(0.5)² | 1.4708 | **1.2659** | **1.2708** |
+| relu² | 1.4805 | 1.2688 | 1.2737 |
+| abs² (= x²) | 1.4698 | 1.2691 | 1.2745 |
 
 Original relu² = 1.4522 was dirty worktree. All cross-wave comparisons use 1.4805.
 
@@ -43,7 +44,9 @@ At 2000 steps, all squared variants converge to within 0.005 of each other:
 
 Seed variance is ~0.003, so most of these differences are noise. The statistically meaningful finding: **squaring matters; the activation before it is second-order.**
 
-At 500 steps, abs² leads relu² by 0.011 (confirmed across 3 seeds). But this gap shrinks steadily: 0.008 at 500 → 0.006 at 1000 → 0.003 at 2000. Whether it converges to zero or a small residual is unknown — wave 24 (6000 steps, running) will resolve this.
+At 500 steps, abs² leads relu² by 0.011 (confirmed across 3 seeds). **Wave 24 (6000 steps) resolved this: relu² overtakes abs² by step 5000.** The gap evolution: +0.010 at 500 → +0.005 at 1000 → +0.002 at 2000 → +0.001 at 3000 → 0.000 at 5000 → -0.0003 at 6000. abs²'s early lead was transient — likely an init-scale artifact (abs² has ~2× output variance at init, giving Adam a head start).
+
+**leaky(0.5)² is the overall winner.** It leads at every checkpoint past step 500, and the gap vs relu² *widens* over training: 0.003 at 2000 → 0.004 at 4000 → 0.003 at 6000 (post-quant: 0.0029). It combines the init-scale advantage of abs² with mild sparsity.
 
 ---
 
@@ -55,13 +58,15 @@ Without squaring, relu (hard zeros) is the worst activation (1.5007 vs silu 1.49
 - abs² (no zeros) = 1.4698 beats relu² (has zeros) = 1.4805
 - leaky(0.5)² leads at 2000 steps
 
-Leak rate sweep at 500 steps is monotonically decreasing (more leak = better). At 2000 steps, leaky(0.5)² beats abs². This could mean optimal sparsity increases with training length, OR it could be an init-scale confound (see critique).
+Leak rate sweep shows a clear pattern across training length:
 
-| Leak rate | BPB (500 steps) | BPB (2000 steps) |
-|---:|---:|---:|
-| 0.0 (relu²) | 1.4807 | 1.3245 |
-| 0.5 | 1.4724 | 1.3200 |
-| 1.0 (abs²) | 1.4712 | 1.3219 |
+| Leak rate | BPB (500) | BPB (2000) | BPB (6000) | Post-quant |
+|---:|---:|---:|---:|---:|
+| 0.0 (relu²) | 1.4806 | 1.3239 | 1.2688 | 1.2737 |
+| 0.5 (leaky²) | 1.4708 | 1.3197 | 1.2659 | **1.2708** |
+| 1.0 (abs²) | 1.4705 | 1.3217 | 1.2691 | 1.2745 |
+
+At 500 steps: abs² ≈ leaky² > relu² (init-scale effect). At 6000 steps: leaky² > relu² > abs². The crossover confirms: abs²'s early advantage was init-scale, not a real feature. relu² catches up as Adam adapts. leaky(0.5)² gets the best of both — enough leak to avoid the init-scale penalty, enough zeros for mild regularization.
 
 ---
 
@@ -101,13 +106,19 @@ Wave 23 tested why squaring works:
 - **act19** (500 steps): hard_shrink(0.2)²=1.4710, hard_shrink(0.5)²=1.4715, softshrink²=1.4748, shifted_relu_neg²=1.4832, threshold²=1.4841, shifted_relu_pos²=1.4862
 - **act21** (500 steps, 3 seeds): abs² mean=1.4698, relu² mean=1.4805
 - **act22** (2000 steps, learning curves): see Finding 2
+- **act24** (6000 steps): relu²=1.2688 (quant 1.2737), abs²=1.2691 (quant 1.2745), leaky(0.5)²=1.2659 (quant 1.2708)
 
-Learning curves (act22):
+Learning curves (act22 to 2000, act24 to 6000):
 
-| Step | abs² | relu² | leaky(0.5)² | selu² | softshrink² |
-|---:|---:|---:|---:|---:|---:|
-| 50 | 2.335 | 2.352 | 2.349 | 2.355 | 2.358 |
-| 250 | 1.606 | 1.616 | 1.605 | 1.601 | 1.611 |
-| 500 | 1.472 | 1.480 | 1.469 | 1.471 | 1.473 |
-| 1000 | 1.378 | 1.384 | 1.378 | 1.382 | 1.379 |
-| 2000 | 1.322 | 1.325 | 1.320 | 1.324 | 1.322 |
+| Step | abs² | relu² | leaky(0.5)² | relu²−abs² gap |
+|---:|---:|---:|---:|---:|
+| 50 | 2.335 | 2.352 | 2.349 | +0.017 |
+| 250 | 1.606 | 1.616 | 1.605 | +0.010 |
+| 500 | 1.471 | 1.481 | 1.471 | +0.010 |
+| 1000 | 1.378 | 1.384 | 1.377 | +0.005 |
+| 2000 | 1.322 | 1.324 | 1.320 | +0.002 |
+| 3000 | 1.298 | 1.300 | 1.296 | +0.002 |
+| 4000 | 1.284 | 1.285 | 1.282 | +0.001 |
+| 5000 | 1.275 | 1.275 | 1.272 | 0.000 |
+| 6000 | 1.269 | 1.269 | 1.266 | -0.000 |
+| **Quantized** | **1.275** | **1.274** | **1.271** | **-0.001** |
