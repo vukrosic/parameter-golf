@@ -807,8 +807,44 @@ class MLP(nn.Module):
             return self.proj(x.square())
         elif self.act == "hard_shrink2":
             # Zero in [-0.5, 0.5], identity outside. More sparsity than relu.
-            # Tests: does more aggressive zeroing help or hurt?
             x = F.hardshrink(self.fc(x), lambd=0.5)
+            return self.proj(x.square())
+        elif self.act == "hard_shrink2_02":
+            # Milder shrinkage: zero in [-0.2, 0.2].
+            x = F.hardshrink(self.fc(x), lambd=0.2)
+            return self.proj(x.square())
+        elif self.act == "shifted_relu2_pos":
+            # relu(x - 0.5)² — threshold at +0.5, more sparsity.
+            x = torch.relu(self.fc(x) - 0.5)
+            return self.proj(x.square())
+        elif self.act == "shifted_relu2_neg":
+            # relu(x + 0.5)² — threshold at -0.5, less sparsity.
+            x = torch.relu(self.fc(x) + 0.5)
+            return self.proj(x.square())
+        elif self.act == "celu2":
+            # celu: C1-smooth, linear for x>0, exponential for x<0.
+            x = F.celu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "softplus_centered2":
+            # softplus(x) - ln(2), then square. Zero-centered, smooth.
+            x = F.softplus(self.fc(x)) - 0.6931471805599453
+            return self.proj(x.square())
+        elif self.act == "selu2":
+            # selu squared. Self-normalizing, linear positive side.
+            x = F.selu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_05":
+            # Half-scale negatives. Tests large leak.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+            return self.proj(x.square())
+        elif self.act == "threshold2":
+            # Hard threshold at 0.5: zero if x < 0.5, else x. Discontinuous.
+            h = self.fc(x)
+            x = torch.where(h > 0.5, h, torch.zeros_like(h))
+            return self.proj(x.square())
+        elif self.act == "softshrink2":
+            # sign(x) * max(|x| - 0.5, 0), then square. Symmetric sparsity.
+            x = F.softshrink(self.fc(x), lambd=0.5)
             return self.proj(x.square())
         else:
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")

@@ -122,19 +122,30 @@ Seed variance is ~0.003 for most. relu² at seed 1337 is a lucky outlier (0.023 
 
 ---
 
-## What we've proven
+## Summary: research questions, evidence, status
 
-1. **Squaring helps relu far more than any other activation.** Not a general rule — depends on base shape.
-2. **Hard zeros are not the primary factor.** `softplus²` (no zeros) beats `clamp(silu, 0)²` (has zeros).
-3. **relu's advantage is its positive-side shape** — pure linear, so relu² = clean x². Other functions have curved positive sides that produce messier squared shapes.
-4. **Gates are not inherently bad.** At matched width, gates help slightly. relu² wins by spending all params on width.
-5. **p=2 is the optimal exponent.**
+| # | Question | Key evidence | Status |
+|---|---|---|---|
+| 1 | Does squaring help? | relu²=1.4522 vs relu=1.5007 (-0.049). But silu²=1.4841 vs silu=1.4908 (-0.007). swiglu²=1.6055 vs swiglu=1.4668 (diverged). | Squaring helps relu massively but not other functions. Not a general rule. |
+| 2 | Are hard zeros the reason? | softplus² (no zeros) = 1.4788 beats clamp(silu,0)² (has zeros) = 1.4855. leaky_relu(0.01)² = 1.4809. leaky_relu(0.1)² = 1.4781. | **No.** Hard zeros are not the primary factor. Functions without zeros can match or beat functions with zeros. |
+| 3 | Is it the positive-side shape? | relu (linear positive side) + square = 1.4522. silu (curved positive side) + clamp + square = 1.4855. softplus (curved) + square = 1.4788. | Hypothesis: relu's linear positive side gives the cleanest x² shape. **Testing now** with elu² (linear positive, smooth negative) and sharp_softplus². |
+| 4 | Do gates help or hurt? | gated_relu² = 1.4796 (2/3 width + gate). relu²_narrow = 1.4908 (2/3 width, no gate). | Gates help at matched width (+0.011). relu² wins over gated variants because it has more width, not because gates are bad. |
+| 5 | What exponent is best? | p=1.0: 1.4778. p=2.0: 1.4534. p=2.2: 1.4546. p=3.0: 1.5097. | p=2 is optimal. Confirmed by 4 data points. |
+| 6 | Does threshold position matter? | Only relu at x=0 tested so far. | **Testing now** with shifted_relu(x±0.5)² and hard_shrink variants. |
+| 7 | Does suppressing negatives matter at all? | abs² (= x², no suppression) running. Will compare to relu² directly. | **Pending** act18_abs2 result. |
 
-## Open questions
+### What we can say with evidence
 
-1. **Can we match relu² with a different function that has a linear positive side?** E.g., `max(x, 0)` is not the only function with `f(x) = x` for x > 0 — a shifted softplus `softplus(x, β=large)²` approaches relu² as β increases.
-2. **Would relu² with extra width (MLP_MULT=3) beat relu² at standard width?** Since width is the real bottleneck.
-3. **Is the positive-side linearity hypothesis testable more directly?** E.g., `x * sigmoid(βx)` with large β approaches relu — does `(x * sigmoid(βx))²` approach relu² performance?
+- Squaring the activation gives a large gain specifically on relu (+0.049) but not in general.
+- The "hard zeros" explanation for relu²'s advantage is wrong — softplus² has no zeros and beats clamped-silu².
+- The gap between relu² and other squared functions is ~0.03, and the best non-relu² option so far is leaky_relu(0.1)² at 1.4781.
+- Gates are not harmful at equal parameter count — they recover ~0.011 at 2/3 width.
+
+### What we cannot say yet
+
+- Whether relu's linear positive side is the actual mechanism (waiting on elu², sharp_softplus² results).
+- Whether suppressing negatives matters at all (waiting on abs² result).
+- Whether the threshold at x=0 is optimal or just the default (waiting on shifted_relu² results).
 
 ---
 

@@ -1,16 +1,21 @@
-# Tier 3: test positive-side linearity hypothesis
-#
-# Hypothesis: relu² wins because relu's positive side is pure linear (f(x) = x),
-# giving the cleanest x² after squaring. Other functions curve near zero.
+# Deep experiment pipeline — keep all 5 GPUs saturated
 #
 # Format: <name> <steps> [ENV_VAR=value ...]
 
-# sharp_softplus approaches relu as beta grows. Does performance approach relu² too?
+# === Wave 19: threshold position ===
+# relu zeros at x=0. Is 0 special, or does shifting help/hurt?
+# Narrower dead zone than relu (zero in [-0.2, 0.2] vs relu's (-inf, 0])
+# Hard threshold at 0.5 (discontinuous). Tests if the kink matters.
+# Symmetric sparsity: shrink from both sides. Tests if negative suppression is directional.
+act19_softshrink2_500 500 MLP_ACT=softshrink2
 
-# elu has the SAME positive side as relu (f(x)=x for x>0) but smooth negative side.
-# If this matches relu², the positive side is what matters, not the hard cutoff.
-
-# |x|² = x² everywhere. Linear on both sides, no zeros. Tests raw linearity.
-
-# Zero in [-0.5, 0.5], identity outside. More sparsity than relu.
-act18_hard_shrink2_500 500 MLP_ACT=hard_shrink2
+# === Wave 20: elu family (same positive side as relu, different negative sides) ===
+# elu² is running in act18. These add more data points along the negative-side axis.
+act20_celu2_500 500 MLP_ACT=celu2
+act20_selu2_500 500 MLP_ACT=selu2
+# softplus centered at zero: smooth, passes through origin, linear for large x.
+act20_softplus_centered2_500 500 MLP_ACT=softplus_centered2
+# Replicate relu2 baseline as a control for this wave.
+act20_relu2_ctrl_500 500 MLP_ACT=relu2
+# abs2 but only on positive side (= relu2, sanity check that act path works)
+act20_leaky05_500 500 MLP_ACT=leaky_relu2_05
