@@ -14,10 +14,5 @@
 # SiLU-family 2x2: smooth counterpart with the same square/gate structure.
 
 # Cross-family bridge runs: same gate, compare hard vs smooth around the strongest region.
-act15_power_relu_mildgate22_500 500 MLP_ACT=power_relu_mildgate ACT_POWER=2.2 ACT_GATE_FLOOR=0.5
-act15_power_silu22_500 500 MLP_ACT=power_silu ACT_POWER=2.2
-act15_power_silu_mildgate22_500 500 MLP_ACT=power_silu_mildgate ACT_POWER=2.2 ACT_GATE_FLOOR=0.5
 
 # Gate-strength architecture, but only on the most plausible hard-selector branch.
-act16_power_relu_mildgate20_floor03_500 500 MLP_ACT=power_relu_mildgate ACT_POWER=2.0 ACT_GATE_FLOOR=0.3
-act16_power_relu_mildgate20_floor07_500 500 MLP_ACT=power_relu_mildgate ACT_POWER=2.0 ACT_GATE_FLOOR=0.7

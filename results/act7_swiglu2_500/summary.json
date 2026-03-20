@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.59194698,
+    "val_loss": 2.6879358
+  },
+  "generated_at_utc": "2026-03-19T18:28:53+00:00",
+  "int8_zlib_model_bytes": 11279218,
+  "int8_zlib_total_submission_bytes": 11339519,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.5883,
+    "val_loss": 2.6818
+  },
+  "run_id": "act7_swiglu2_500"
+}

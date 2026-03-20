@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.45913406,
+    "val_loss": 2.46368673
+  },
+  "generated_at_utc": "2026-03-19T18:41:51+00:00",
+  "int8_zlib_model_bytes": 10744655,
+  "int8_zlib_total_submission_bytes": 10805437,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.4534,
+    "val_loss": 2.454
+  },
+  "run_id": "act14_power_relu20_500"
+}
