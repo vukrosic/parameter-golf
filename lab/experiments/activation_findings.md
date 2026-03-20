@@ -1,6 +1,6 @@
 # Activation Function Ablation — Findings
 
-**Scope:** MLP activation only, between up-proj and down-proj in `train_gpt.py`. 40+ runs, 500-6000 steps. Clean `relu²` baseline is `1.4805` at 500; the older `1.4522` came from a dirty worktree and should not be used.
+**Scope:** MLP activation only, between up-proj and down-proj in `train_gpt.py`. 40+ runs, 500-13000 steps. Clean `relu²` baseline is `1.4805` at 500; the older `1.4522` came from a dirty worktree and should not be used.
 
 ## What is solid
 
@@ -41,6 +41,15 @@
 
 6. **Quantization does not change the activation ranking.** The top family keeps the same order after int8+zlib, with similar gaps: `leaky(0.5)² < relu² < abs²`.
 
+7. **The long `relu²` baseline keeps improving cleanly through 13k steps.** The 13k run is consistent with the 6k control at the overlap point, then keeps buying real loss.
+
+| relu² run | Step 6000 | Final step | Final BPB | Post-quant |
+|---|---:|---:|---:|---:|
+| 6k control | 1.2688 | 6000 | 1.2688 | 1.2737 |
+| 13k baseline | 1.2700 | 13000 | **1.2440** | **1.2498** |
+
+The overlap at step 6000 is only ~0.0012 BPB apart, so the 13k baseline looks like a normal continuation rather than a different trajectory.
+
 ## What this rules out
 
 - **Hard zeros are not the main story.** `abs²` and `softplus²` beat some zero-producing variants.
@@ -65,11 +74,44 @@ Best current interpretation:
 - **Signal preservation matters.** `tanh²` is simple but too compressive.
 - **Init scale matters, but is not the whole story.** It explains some early-run behavior, not the final ranking.
 
+## Longer-run follow-up
+
+The 6k runs resolved the main short-run ambiguity, and the 13k `relu²` baseline says the gains are still alive late:
+
+| Step | relu² (13k baseline) |
+|---:|---:|
+| 6000 | 1.2700 |
+| 7000 | 1.2635 |
+| 8000 | 1.2577 |
+| 9000 | 1.2544 |
+| 10000 | 1.2515 |
+| 11000 | 1.2479 |
+| 12000 | 1.2446 |
+| 13000 | 1.2440 |
+
+There is no sign of a late collapse or reversal. The post-quant gap also stays small: `1.2498 - 1.2440 = 0.0058`, very similar to the ~0.005 gaps seen in the 6k runs.
+
+## Leak sweep follow-up
+
+Wave 26 checked whether `0.5` is a special leak value or just one point on a plateau:
+
+| Variant | Seed | BPB (4000) | Post-quant |
+|---|---:|---:|---:|
+| leaky(0.3)² | 1337 | 1.2835 | 1.2873 |
+| leaky(0.7)² | 1337 | 1.2827 | 1.2867 |
+| leaky(0.5)² | 42 | **1.2822** | **1.2862** |
+
+Read:
+
+- The useful region is broad: `0.3-0.7` all work well.
+- `0.3` is probably too sparse; it trails the other two.
+- `0.5` still looks like the safest default, but the exact optimum is not resolved because the `0.5` follow-up used a different seed than the `0.3` and `0.7` runs.
+
 ## What is still uncertain
 
-- Whether `leaky(0.5)²` stays best at full submission length.
+- Whether `leaky(0.5)²` stays best at full submission length. We still do not have a 13k leaky run against the 13k `relu²` baseline.
 - How much of the gain is from better optimization vs better features. We know const-grad is bad; we do not yet have a clean percentage split.
-- The exact optimal leak. `0.5` is the best tested long-run point so far, not a proven optimum.
+- The exact optimal leak. Wave 26 suggests a broad `0.5-0.7` plateau, but not a nailed-down optimum.
 
 ## Secondary result
 
