@@ -15,3 +15,9 @@ act24_leaky05_6000 6000 MLP_ACT=leaky_relu2_05 CHECKPOINT_EVERY=500  # DONE
 # Retries (crashed on GPU 4 CUDA init)
 act24_relu2_6000_r2 6000 MLP_ACT=relu2 CHECKPOINT_EVERY=500  # DONE
 act24_leaky05_6000_r2 6000 MLP_ACT=leaky_relu2_05 CHECKPOINT_EVERY=500  # DONE
+
+# Wave 25: Critique-driven experiments (1300 steps ≈ 22 min each)
+# Tests three flaws identified in activation_critique.md.
+act25_relu2_initscale 1300 MLP_ACT=relu2_initscale CHECKPOINT_EVERY=500
+act25_relu2_constgrad 1300 MLP_ACT=relu2_constgrad CHECKPOINT_EVERY=500
+act25_tanh2 1300 MLP_ACT=tanh2 CHECKPOINT_EVERY=500

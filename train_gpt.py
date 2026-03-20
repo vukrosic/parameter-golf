@@ -626,6 +626,18 @@ class CausalSelfAttention(nn.Module):
         return out
 
 
+class _SquareConstGrad(torch.autograd.Function):
+    """Forward: relu(x)². Backward: 1(x>0), i.e. constant gradient for active neurons."""
+    @staticmethod
+    def forward(ctx, x):
+        mask = x > 0
+        ctx.save_for_backward(mask)
+        return torch.where(mask, x * x, torch.zeros_like(x))
+    @staticmethod
+    def backward(ctx, grad_output):
+        mask, = ctx.saved_tensors
+        return grad_output * mask.float()
+
 class MLP(nn.Module):
     def __init__(self, dim: int, mlp_mult: int, act: str = "relu2", act_power: float = 2.0, act_gate_floor: float = 0.5):
         super().__init__()
@@ -884,6 +896,26 @@ class MLP(nn.Module):
         elif self.act == "leaky_relu2_10":
             # leak=1.0 = abs² = x². Sanity check it matches abs2.
             x = F.leaky_relu(self.fc(x), negative_slope=1.0)
+            return self.proj(x.square())
+        # --- Wave 25: critique-driven experiments ---
+        elif self.act == "relu2_initscale":
+            # relu(x)² × 2. At init, relu zeros ~50% of activations, so
+            # relu² output variance ≈ half of abs². Multiplying by 2
+            # matches the init-time variance. If the early-training gap
+            # between relu² and abs² disappears, init scale was the confound.
+            x = torch.relu(self.fc(x))
+            return self.proj(x.square() * 2.0)
+        elif self.act == "relu2_constgrad":
+            # Forward: relu(x)². Backward: constant 1(x>0) — NOT proportional
+            # to activation. Tests whether adaptive gradient truly matters.
+            # The detach experiment (wave 23) was flawed: it halved gradient
+            # scale but kept it adaptive. This removes adaptivity entirely.
+            return self.proj(_SquareConstGrad.apply(self.fc(x)))
+        elif self.act == "tanh2":
+            # tanh(x)². Simple function but compresses signal to [-1,1]
+            # before squaring. Tests "simplicity" vs "signal preservation":
+            # if tanh² is bad, signal preservation is the right framing.
+            x = torch.tanh(self.fc(x))
             return self.proj(x.square())
         else:
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
