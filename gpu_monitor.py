@@ -8,6 +8,7 @@ import subprocess
 import threading
 import signal
 import sys
+import re
 from datetime import datetime
 
 class GPUMonitor:
@@ -15,6 +16,16 @@ class GPUMonitor:
         self.interval = interval
         self.running = False
         self.thread = None
+
+    def _parse_int_field(self, value, default=0):
+        """Parse numeric nvidia-smi fields, tolerating placeholders like [N/A]."""
+        cleaned = value.strip()
+        if not cleaned:
+            return default
+        match = re.search(r"-?\d+", cleaned)
+        if match:
+            return int(match.group(0))
+        return default
         
     def get_gpu_stats(self):
         """Get GPU utilization and memory stats"""
@@ -29,17 +40,23 @@ class GPUMonitor:
                 lines = result.stdout.strip().split('\n')
                 stats = []
                 for line in lines:
+                    if not line.strip():
+                        continue
                     parts = [p.strip() for p in line.split(',')]
                     if len(parts) >= 6:
                         stats.append({
-                            'index': int(parts[0]),
+                            'index': self._parse_int_field(parts[0], default=-1),
                             'name': parts[1],
-                            'utilization': int(parts[2]),
-                            'memory_used': int(parts[3]),
-                            'memory_total': int(parts[4]),
-                            'temperature': int(parts[5])
+                            'utilization': self._parse_int_field(parts[2], default=0),
+                            'memory_used': self._parse_int_field(parts[3], default=0),
+                            'memory_total': self._parse_int_field(parts[4], default=0),
+                            'temperature': self._parse_int_field(parts[5], default=-1)
                         })
                 return stats
+            print(
+                f"[{datetime.now().strftime('%H:%M:%S')}] "
+                f"⚠️ nvidia-smi failed with code {result.returncode}: {result.stderr.strip()}"
+            )
         except subprocess.TimeoutExpired:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] ⏳ nvidia-smi timed out...")
         except Exception as e:
@@ -65,7 +82,7 @@ class GPUMonitor:
                     util = gpu['utilization']
                     mem_used = gpu['memory_used']
                     mem_total = gpu['memory_total']
-                    mem_percent = (mem_used / mem_total) * 100
+                    mem_percent = (mem_used / mem_total) * 100 if mem_total else 0
                     temp = gpu['temperature']
                     
                     # Color coding for utilization
@@ -76,9 +93,10 @@ class GPUMonitor:
                     else:
                         util_color = "🟢"  # Green for high
                     
+                    temp_display = f"{temp:2d}°C" if temp >= 0 else "N/A"
                     print(f"  GPU {gpu['index']}: {util_color} {util:3d}% util | "
                           f"{mem_used:5d}/{mem_total:5d}MB ({mem_percent:4.1f}%) | "
-                          f"{temp:2d}°C | {gpu['name']}")
+                          f"{temp_display:>4} | {gpu['name']}")
                     
                     total_util += util
                 
