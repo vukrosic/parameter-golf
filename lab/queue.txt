@@ -1,18 +1,16 @@
-# Activation understanding queue
+# Tier 3: test positive-side linearity hypothesis
 #
-# Goal:
-# - replace the broad power/gate grid with a few hypothesis-driven ablations
-# - answer bigger questions about selector, amplifier, and gate roles
+# Hypothesis: relu² wins because relu's positive side is pure linear (f(x) = x),
+# giving the cleanest x² after squaring. Other functions curve near zero.
 #
-# Format:
-# <name> <steps> [ENV_VAR=value ...]
+# Format: <name> <steps> [ENV_VAR=value ...]
 
-# Finish the decisive queued wave already in progress.
+# sharp_softplus approaches relu as beta grows. Does performance approach relu² too?
 
-# ReLU-family 2x2: selector fixed hard, test square and mild gate.
+# elu has the SAME positive side as relu (f(x)=x for x>0) but smooth negative side.
+# If this matches relu², the positive side is what matters, not the hard cutoff.
 
-# SiLU-family 2x2: smooth counterpart with the same square/gate structure.
+# |x|² = x² everywhere. Linear on both sides, no zeros. Tests raw linearity.
 
-# Cross-family bridge runs: same gate, compare hard vs smooth around the strongest region.
-
-# Gate-strength architecture, but only on the most plausible hard-selector branch.
+# Zero in [-0.5, 0.5], identity outside. More sparsity than relu.
+act18_hard_shrink2_500 500 MLP_ACT=hard_shrink2

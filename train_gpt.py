@@ -784,6 +784,32 @@ class MLP(nn.Module):
             # Bigger leak (0.1). If much worse, hard zeros really matter.
             x = F.leaky_relu(self.fc(x), negative_slope=0.1)
             return self.proj(x.square())
+        # --- Tier 3: test positive-side linearity hypothesis ---
+        elif self.act == "sharp_softplus2":
+            # softplus(x, beta=10)² — approaches relu² as beta grows.
+            # If this matches relu², positive-side linearity is the answer.
+            x = F.softplus(self.fc(x), beta=10)
+            return self.proj(x.square())
+        elif self.act == "sharper_softplus2":
+            # softplus(x, beta=50)² — even closer to relu.
+            x = F.softplus(self.fc(x), beta=50)
+            return self.proj(x.square())
+        elif self.act == "elu2":
+            # elu(x) = x for x > 0, exp(x)-1 for x < 0.
+            # Same positive side as relu, but smooth + non-zero negatives.
+            # Tests: is positive-side linearity sufficient without hard zeros?
+            x = F.elu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "abs2":
+            # |x|² = x² everywhere. No zeros, perfectly linear on both sides.
+            # Tests: is it about linearity alone, or does suppressing negatives matter?
+            x = self.fc(x)
+            return self.proj(x.square())
+        elif self.act == "hard_shrink2":
+            # Zero in [-0.5, 0.5], identity outside. More sparsity than relu.
+            # Tests: does more aggressive zeroing help or hurt?
+            x = F.hardshrink(self.fc(x), lambd=0.5)
+            return self.proj(x.square())
         else:
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
 

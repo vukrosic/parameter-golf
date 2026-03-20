@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "act17_clamp_gelu2_500",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-20T04:03:19+00:00",
+  "git": {
+    "commit": "34fb96bd7348e63a5d4dac0cbdc69fb84ae2287b",
+    "commit_short": "34fb96b",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/act17_clamp_gelu2_500.txt",
+  "run_id": "act17_clamp_gelu2_500"
+}

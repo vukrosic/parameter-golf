@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.47966073,
+    "val_loss": 2.49834516
+  },
+  "generated_at_utc": "2026-03-20T04:03:28+00:00",
+  "int8_zlib_model_bytes": 13139477,
+  "int8_zlib_total_submission_bytes": 13201792,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.4788,
+    "val_loss": 2.4969
+  },
+  "run_id": "act17_softplus2_500"
+}
