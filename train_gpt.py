@@ -638,6 +638,53 @@ class _SquareConstGrad(torch.autograd.Function):
         mask, = ctx.saved_tensors
         return grad_output * mask.float()
 
+class _Relu2CustomGrad(torch.autograd.Function):
+    """Forward: relu(x)². Backward: custom gradient scaling for H1 experiments."""
+    @staticmethod
+    def forward(ctx, x, mode):
+        mask = x > 0
+        ctx.save_for_backward(x, mask)
+        ctx.mode = mode
+        return torch.where(mask, x * x, torch.zeros_like(x))
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, mask = ctx.saved_tensors
+        mode = ctx.mode
+        if mode == "grad1_5x":
+            g = 1.5 * x
+        elif mode == "grad3x":
+            g = 3.0 * x
+        elif mode == "gradsqrt":
+            g = torch.sqrt(x.clamp(min=1e-8))
+        elif mode == "gradx2":
+            g = x * x
+        elif mode == "gradfloor":
+            g = torch.clamp(2.0 * x, min=0.5)
+        elif mode == "gradceil":
+            g = torch.clamp(2.0 * x, max=4.0)
+        else:
+            g = 2.0 * x
+        return grad_output * torch.where(mask, g, torch.zeros_like(x)), None
+
+class _Leaky05SquareConstGrad(torch.autograd.Function):
+    """Forward: leaky_relu(x, 0.5)². Backward: constant 1 everywhere."""
+    @staticmethod
+    def forward(ctx, x):
+        y = torch.where(x >= 0, x, 0.5 * x)
+        return y * y
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
+
+class _Abs2ConstGrad(torch.autograd.Function):
+    """Forward: x². Backward: constant 1 everywhere."""
+    @staticmethod
+    def forward(ctx, x):
+        return x * x
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
+
 class MLP(nn.Module):
     def __init__(self, dim: int, mlp_mult: int, act: str = "relu2", act_power: float = 2.0, act_gate_floor: float = 0.5):
         super().__init__()
@@ -917,6 +964,104 @@ class MLP(nn.Module):
             # if tanh² is bad, signal preservation is the right framing.
             x = torch.tanh(self.fc(x))
             return self.proj(x.square())
+        # --- Phase 2: H1 — gradient scaling experiments (custom backward) ---
+        elif self.act == "relu2_grad1_5x":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "grad1_5x"))
+        elif self.act == "relu2_grad3x":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "grad3x"))
+        elif self.act == "relu2_gradsqrt":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradsqrt"))
+        elif self.act == "relu2_gradx2":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradx2"))
+        elif self.act == "leaky05_constgrad":
+            return self.proj(_Leaky05SquareConstGrad.apply(self.fc(x)))
+        elif self.act == "abs2_constgrad":
+            return self.proj(_Abs2ConstGrad.apply(self.fc(x)))
+        elif self.act == "relu2_gradfloor":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradfloor"))
+        elif self.act == "relu2_gradceil":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradceil"))
+        # --- Phase 2: H2 — signal compression experiments ---
+        elif self.act == "hardtanh2":
+            x = F.hardtanh(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "softsign2":
+            h = self.fc(x)
+            x = h / (1.0 + h.abs())
+            return self.proj(x.square())
+        elif self.act == "sigmoid2":
+            x = torch.sigmoid(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "arctan_sq":
+            x = torch.arctan(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "erf2":
+            x = torch.erf(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "tanh_scaled2":
+            x = 2.0 * torch.tanh(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "relu2_clamped4":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.clamp(x.square(), max=4.0))
+        elif self.act == "relu2_clamped16":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.clamp(x.square(), max=16.0))
+        elif self.act == "log1p_relu2":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.log1p(x.square()))
+        # --- Phase 2: H3 — negative-side information experiments ---
+        elif self.act == "x_absx":
+            h = self.fc(x)
+            return self.proj(h * h.abs())
+        elif self.act == "elu03_2":
+            x = F.elu(self.fc(x), alpha=0.3)
+            return self.proj(x.square())
+        elif self.act == "gelu2":
+            x = F.gelu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "mish2":
+            x = F.mish(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_02":
+            x = F.leaky_relu(self.fc(x), negative_slope=0.2)
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_08":
+            x = F.leaky_relu(self.fc(x), negative_slope=0.8)
+            return self.proj(x.square())
+        elif self.act == "relu2_linneg05":
+            # relu(x)² for x>0, 0.5*|x| for x<0. Tests if negative side
+            # needs adaptive gradients (H1) or just nonzero signal (H3).
+            h = self.fc(x)
+            pos = torch.relu(h).square()
+            neg = 0.5 * torch.relu(-h)
+            return self.proj(pos - neg)
+        elif self.act == "bipolar_relu2":
+            # relu(x)² - 0.25*relu(-x)². Output can go negative.
+            h = self.fc(x)
+            return self.proj(torch.relu(h).square() - 0.25 * torch.relu(-h).square())
+        # --- Phase 2: cross-hypothesis and edge cases ---
+        elif self.act == "leaky05_cubed":
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+            return self.proj(x * x * x)
+        elif self.act == "leaky05_pow15":
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+            return self.proj(x.abs().pow(1.5) * x.sign())
+        elif self.act == "softplus2_beta5":
+            x = F.softplus(self.fc(x), beta=5)
+            return self.proj(x.square())
+        elif self.act == "softplus2_beta05":
+            x = F.softplus(self.fc(x), beta=0.5)
+            return self.proj(x.square())
+        elif self.act == "celu05_2":
+            x = F.celu(self.fc(x), alpha=0.5)
+            return self.proj(x.square())
+        elif self.act == "x_silu":
+            h = self.fc(x)
+            return self.proj(h * F.silu(h))
+        elif self.act == "x_tanh":
+            h = self.fc(x)
+            return self.proj(h * torch.tanh(h))
         else:
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
 
