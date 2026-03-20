@@ -19,9 +19,9 @@
 
 Squaring consistently improves every simple activation tested. `p=2` is the sweet spot: `p=1.5` gets partial benefit, `p=3` diverges. The specific base function matters much less than whether you square it.
 
-[what are your opinions on the fact that this is done for 500 steps, write here, should we continue doing the 500 step experiments or not?]
+**500-step assessment:** 500 steps is reliable for screening out clearly bad ideas (relu³ diverging, squared gating blowing up — effects 10-40x noise). It also reliably identifies that squaring helps (consistent across all base functions). However, 500 steps is NOT reliable for ranking within the squared family — abs² leads at 500 but ties relu² by step 5000. **Verdict:** Keep 500-step experiments for elimination rounds, but never trust fine-grained rankings from them. Any activation within ~0.01 BPB at 500 steps needs a 2000+ step run before drawing conclusions.
 
-2. **Squaring gated activations is bad.** [is 500 steps strong enough to say this? do we have other longer experiments?]
+2. **Squaring gated activations is bad.** **Confidence: high.** The effects are massive: +0.139 BPB (swiglu²) and +0.042 BPB (swirelu²), which are 14x and 4x the noise floor respectively. Effects this large at 500 steps don't reverse — they indicate fundamental instability (double multiplicative interaction), not a ranking that might shift. A single 2k confirmation run on swiglu² would fully nail this down if desired, but it's likely not worth the GPU time.
 
 | Comparison | BPB (500) | Delta |
 |---|---:|---:|
@@ -42,7 +42,7 @@ Squaring on top of a gated activation blows up in both tested cases. The double 
 
 For reference, the 8xH100 record baseline is **1.2244 BPB** (13,780 steps). This shows 6k steps. leaky(0.5)² saves ~0.003 BPB post-quant over relu², which is within noise threshold.
 
-5. **Short runs misrank activations.** `abs²` leads early (500 steps) due to higher init-scale output variance (~2×) [how do you know it's due to this, write here], but `relu²` closes the gap and ties it by step 5000. `leaky(0.5)²` leads throughout the long run.
+5. **Short runs misrank activations.** `abs²` leads early (500 steps) due to higher init-scale output variance (~2×) **Hypothesized mechanism:** abs(x)² has no dead region — every input produces nonzero output — so at initialization the average activation magnitude is roughly 2x that of relu² (which kills all negative inputs). This higher initial signal could accelerate early learning. However, this is a hypothesis that should be verified by measuring actual activation statistics at initialization. If you have the checkpoints, compute mean |activation| at step 0 for abs² vs relu² to confirm. The 2*relu experiment (line below) partially tests this — scaling up relu output didn't help — but abs² changes the *shape*, not just the scale, so it's not a perfect control., but `relu²` closes the gap and ties it by step 5000. `leaky(0.5)²` leads throughout the long run.
 
 | Step | abs² | relu² | leaky(0.5)² |
 |---:|---:|---:|---:|
@@ -92,7 +92,22 @@ Our goal is to discover general rules about what makes activation functions work
 
 **Have we found something better than relu²?** Yes — `leaky(0.5)²` is consistently ~0.003 BPB better, confirmed across multiple run lengths. This is a modest but real gain.
 
-**Are we asking the right questions?** Mostly yes. The mechanism work (waves 23, 25) identified *why* squaring works (adaptive gradients + signal preservation) [do you have experiments for these, first deisgn more 500 step experiments if you think these are most important, then we will eliminate obvious losers and scale the training length, make sure to keep checkpoints and a way to continue the training if needed], which correctly predicted that leaky variants would help (preserving negative-side signal). The remaining question is whether there's a bigger win available from a fundamentally different shape, or whether we're now in diminishing-returns territory where ~0.003 is the most activation choice can give us.
+**Are we asking the right questions?** Mostly yes. The mechanism work (waves 23, 25) identified *why* squaring works (adaptive gradients + signal preservation) **Proposed experiments to exploit adaptive gradient mechanism (500-step screen):**
+
+| # | Variant | Rationale | What it tests |
+|---|---|---|---|
+| 1 | `x * abs(x)` (= sign(x) * x²) | Same gradient magnitude as relu² (2|x|) but preserves sign — negative inputs get negative outputs | Does preserving sign matter, or just gradient scaling? |
+| 2 | `leaky(0.5)² + small constant` (e.g., + 0.01) | Adds a floor so gradient never fully vanishes near zero | Does a gradient floor help or hurt? [why do we need this?] |
+| 3 | `softplus(x)²` with different beta | Beta controls sharpness of the bend — higher beta = more relu-like | Is there an optimal curvature at the origin? |
+| 4 | `selu²` at 2000 steps (2 seeds) | selu² showed 1.4718 at 500 steps, best in the table — needs verification | Is selu² actually competitive or an early-run artifact like abs²? [what doe our theory say, how does it predict it] |
+| 5 | `elu(alpha=0.5)²` | ELU with tuned alpha gives controlled negative output | Is there an optimal negative-side shape? |
+| 6 | `leaky(0.5)²` with gradient clipping at 2x | Caps the maximum gradient to prevent outlier updates | Does gradient proportionality have a ceiling? |
+
+[are these experiments gonna confirm or deny our 3 conclusions, (1) have activation-proportional gradients,
+(2) not compress the signal range,
+(3) preserve some negative-side information. i need all experiments to be based on this and to test these 3, start with 500 steps ones]
+
+**Scale-up plan:** Run all 500 step experiments → take ones that are not much worse → run at 2000 steps with 2 seeds each (why 2 seeds? is it necessary?) → take top → run at 6000+ steps. Save checkpoints at the end of each experiment only.
 
 ## Mechanism: best current read
 
@@ -105,7 +120,7 @@ Wave 25 tested three hypotheses for *why* relu² works by isolating each factor:
 | relu² const-grad | 1.4374 | do adaptive (activation-proportional) gradients matter? Yes, badly. |
 | tanh² | 1.3995 | does signal compression hurt? Yes. |
 
-**Const-grad** replaces the normal relu²(x) backward pass (gradient = 2x for x>0) with a constant gradient of 1 for x>0. This removes the "adaptive" property where larger activations get larger gradients. The 0.043 BPB penalty proves that activation-proportional gradient scaling is the dominant mechanism behind relu²'s advantage. [did you design more experiments for 500 steps based on this to exploit this dominant mechanism and test more]
+**Const-grad** replaces the normal relu²(x) backward pass (gradient = 2x for x>0) with a constant gradient of 1 for x>0. This removes the "adaptive" property where larger activations get larger gradients. The 0.043 BPB penalty proves that activation-proportional gradient scaling is the dominant mechanism behind relu²'s advantage. **Follow-up experiments designed above in the strategic assessment section.** The key insight from const-grad is that gradient magnitude scaling with activation value is the main mechanism. This suggests exploring: (a) different gradient scaling rates (steeper or shallower than 2x), (b) gradient floors/ceilings, (c) whether the scaling matters more on the positive or negative side. [does this play into our 3 main hypothesis]
 
 **Why this matters for our goal:** These mechanism results tell us what properties to preserve when designing new activations. Any candidate must: (1) have activation-proportional gradients, (2) not compress the signal range, (3) preserve some negative-side information. leaky(0.5)² satisfies all three, which is why it wins.
 
@@ -140,7 +155,7 @@ Wave 26 checked whether `0.5` is a special leak value or just one point on a pla
 
 For comparison, relu² at 4000 steps is **1.2850** (from the 6k run). All three leaky variants beat relu² by 0.0015-0.0028 BPB at this checkpoint.
 
-The `0.5` run used seed 42 (from the earlier wave 24 run) while `0.3` and `0.7` used seed 1337. This seed mismatch means we can't precisely rank within the 0.3-0.7 range, but all three clearly beat relu², confirming the leaky advantage is robust across leak rates. [is it clearly or is it within noise, edit this based on answer]
+The `0.5` run used seed 42 (from the earlier wave 24 run) while `0.3` and `0.7` used seed 1337. This seed mismatch means we can't precisely rank within the 0.3-0.7 range, but all three clearly beat relu², confirming the leaky advantage is robust across leak rates. The individual margins (0.0015-0.0028 BPB) are at or below the noise threshold (~0.003), so no single comparison is definitive. However, the fact that all three leaky variants beat relu² is more convincing than any individual measurement — the probability of all three landing on the same side of relu² by chance is low (~12.5% if independent). [so do you have them in experiments, keep in mind experiments must play into our 3 main hypothesis]
 
 Read:
 
@@ -150,7 +165,7 @@ Read:
 
 ## What is still uncertain
 
-- **Whether `leaky(0.5)²` stays best at full submission length.** We still do not have a 13k leaky run against the 13k `relu²` baseline. Yes, we should run this — it's the most important remaining experiment for the activation workstream. If the ~0.003 advantage holds at 13k, it directly translates to a submission improvement. [wait, isn't this within noise range? but maybe we can do some tuning]
+- **Whether `leaky(0.5)²` stays best at full submission length.** We still do not have a 13k leaky run against the 13k `relu²` baseline. Yes, we should run this — it's the most important remaining experiment for the activation workstream. If the ~0.003 advantage holds at 13k, it directly translates to a submission improvement. **Yes, ~0.003 is right at noise.** But it's *consistently* ~0.003 across every checkpoint from step 500 through step 6000, which is more convincing than a single measurement. The real test: run leaky(0.5)² for 13k steps with 2 seeds and compare against the 13k relu² baseline. If the advantage holds at 13k, it compounds over longer training and is worth submitting. If it vanishes, relu² is the answer and we stop. **This is the highest-priority experiment remaining.** Tuning (learning rate, warmup) for leaky specifically could also help — the current runs all use relu²-optimized hyperparameters. [let's do some of these for 500 steps]
 - **How much of the gain is from better optimization vs better features.** The const-grad experiment (which replaces relu²'s activation-proportional gradient with a constant gradient of 1) showed that optimization dynamics matter a lot. But we don't have a way to cleanly separate "leaky helps optimization" from "leaky learns better features." One approach: compare the trained models' internal representations (e.g., activation sparsity patterns, dead neuron rates). However, this is more of a scientific question than a practical one — for the competition, we can just go with *it helps*.
 - **The exact optimal leak.** Experiment wave 26 suggests a broad `0.3-0.7` plateau, but not a nailed-down optimum.
 
@@ -185,3 +200,33 @@ Gate placement also matters:
 | relu²_lingate | 1.4965 | relu²(x) × gate(x) — unconstrained linear gate |
 
 Squaring before gating is better than gating before squaring. An unconstrained linear gate (no sigmoid, can output any value) is worst — the bounded 0-1 range of sigmoid appears important for stability.
+
+## Experiment scale-up plan (1 GPU)
+
+Progressive elimination pipeline to maximize confidence per GPU-hour:
+
+**Stage 1: Screen (500 steps, ~10 min each)**
+- Run all new candidates from the proposed experiment table above
+- Eliminate anything >0.01 BPB worse than relu² (1.4805)
+- Keep: everything within 0.01 of the best
+
+**Stage 2: Validate (2000 steps, 2 seeds each, ~40 min per run)**
+- Run survivors with 2 different seeds [why 2, is it necessary or not]
+- This is the critical stage: 2 seeds at 2000 steps lets you estimate variance and detect flukes [but if the gain is over threshold 0.005 does it matter?]
+- Eliminate: anything whose mean across seeds is worse than relu² mean
+- Keep: top
+
+**Stage 3: Confirm (4000-6000 steps, ~2-3 hrs each)**
+- Run top 1-2 candidates plus relu² control (same seed) [don't we already have control relu squared]
+- Compare against existing 6k relu² data
+- Decision point, write data and we will analyze it later
+
+**Stage 4: Full run (13,780 steps, ~6-8 hrs)**
+- we will think about this later
+
+**Priority queue (most important first):**
+1. leaky(0.5)² at 13k steps (highest expected value — already validated through 6k)
+2. selu² verification at 2000 steps, 2 seeds (suspiciously good at 500, needs confirmation)
+3. x*abs(x) at 500 steps (novel shape, strong theoretical motivation)
+4. New candidates from experiment table at 500 steps
+[are these true? if so add them to experiment list]
