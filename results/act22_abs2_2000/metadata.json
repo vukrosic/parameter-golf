@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "2000",
+    "MAX_WALLCLOCK_SECONDS": "7820",
+    "RUN_ID": "act22_abs2_2000",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-20T06:37:35+00:00",
+  "git": {
+    "commit": "9c2f1e94390dc7a6796f7fb99b4ae63ac3cdd5b0",
+    "commit_short": "9c2f1e9",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/act22_abs2_2000.txt",
+  "run_id": "act22_abs2_2000"
+}

@@ -846,6 +846,45 @@ class MLP(nn.Module):
             # sign(x) * max(|x| - 0.5, 0), then square. Symmetric sparsity.
             x = F.softshrink(self.fc(x), lambd=0.5)
             return self.proj(x.square())
+        # --- Wave 23: isolate WHY squaring works ---
+        elif self.act == "relu_scaled":
+            # 2·relu(x) — match relu²'s output magnitude without squaring.
+            # Tests H1: is squaring just about bigger outputs?
+            x = torch.relu(self.fc(x)) * 2.0
+            return self.proj(x)
+        elif self.act == "relu_detach2":
+            # relu(x) · stop_gradient(relu(x)) — same output as relu²,
+            # but gradient = relu(x), not 2·relu(x). Tests if the doubled
+            # gradient (adaptive LR proportional to activation) matters.
+            h = torch.relu(self.fc(x))
+            return self.proj(h * h.detach())
+        elif self.act == "abs_detach2":
+            # x · stop_gradient(x) = x² forward, gradient = x backward.
+            # Same as relu_detach2 but without hard zeros.
+            h = self.fc(x)
+            return self.proj(h * h.detach())
+        elif self.act == "relu_cubed":
+            # relu(x)³ — more extreme amplification than squaring.
+            # Already tested at 500 steps (p=3 diverged). Retry cleanly.
+            x = torch.relu(self.fc(x))
+            return self.proj(x * x * x)
+        elif self.act == "relu_pow15":
+            # relu(x)^1.5 — between linear and quadratic.
+            # Tests if the benefit is continuous in exponent.
+            x = torch.relu(self.fc(x))
+            return self.proj(x * x.sqrt())
+        elif self.act == "leaky_relu2_03":
+            # leak=0.3. Mapping the optimal leak rate.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.3)
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_07":
+            # leak=0.7. Mapping the optimal leak rate.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.7)
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_10":
+            # leak=1.0 = abs² = x². Sanity check it matches abs2.
+            x = F.leaky_relu(self.fc(x), negative_slope=1.0)
+            return self.proj(x.square())
         else:
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
 

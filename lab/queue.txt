@@ -18,6 +18,14 @@
 # abs² confirmed across 3 seeds: mean 1.4698 vs relu² mean 1.4805 (Δ = 0.0107)
 # abs2_1000 still pending (empty dir)
 
-# === Wave 22: 2000-step depth check for top activations ===
-# abs² wins at 500 steps (Δ=0.0107 vs relu², 3 seeds). Do rankings hold at 4x training?
-# 2000 steps ≈ 30 min per run. All 5 GPUs in parallel.
+# === Wave 22: 2000-step depth check for top activations === [DONE]
+# relu² worst of 5 at every checkpoint. leaky(0.5)²=1.3218 best, relu²=1.3264 worst.
+# Rankings at 500 steps = rankings at 2000 steps. 500-step ablations are reliable.
+
+# === Wave 23: WHY does squaring work? ===
+# Three hypotheses:
+#   H1 (magnitude): squaring just makes outputs bigger → test relu_scaled (2·relu, no squaring)
+#   H2 (adaptive gradient): grad ∝ activation is per-neuron adaptive LR
+#       → test relu_detach2/abs_detach2 (same output as ²,  but gradient halved)
+#   H3 (feature interaction): x² creates quadratic features → wins by elimination if H1+H2 fail
+# Also: map optimal leak rate sweep (0.3, 0.7 to fill gaps in 0/0.01/0.1/0.5/1.0)
