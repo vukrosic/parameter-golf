@@ -13,13 +13,11 @@
 # softplus centered at zero: smooth, passes through origin, linear for large x.
 # Replicate relu2 baseline as a control for this wave.
 # abs2 but only on positive side (= relu2, sanity check that act path works)
-act20_leaky05_500 500 MLP_ACT=leaky_relu2_05
 
-# === Wave 21: baseline calibration + depth check ===
-# We need relu2 and abs2 on multiple seeds to know if the gap is real.
-act21_relu2_seed42_500 500 MLP_ACT=relu2 SEED=42
-act21_relu2_seed99_500 500 MLP_ACT=relu2 SEED=99
-act21_abs2_seed42_500 500 MLP_ACT=abs2 SEED=42
-act21_abs2_seed99_500 500 MLP_ACT=abs2 SEED=99
-# Extend abs2 to 1000 steps — does it hold or reverse like AttnRes did?
-act21_abs2_1000 1000 MLP_ACT=abs2
+# === Wave 21: baseline calibration + depth check === [DONE]
+# abs² confirmed across 3 seeds: mean 1.4698 vs relu² mean 1.4805 (Δ = 0.0107)
+# abs2_1000 still pending (empty dir)
+
+# === Wave 22: 2000-step depth check for top activations ===
+# abs² wins at 500 steps (Δ=0.0107 vs relu², 3 seeds). Do rankings hold at 4x training?
+# 2000 steps ≈ 30 min per run. All 5 GPUs in parallel.

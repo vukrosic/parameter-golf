@@ -148,7 +148,7 @@ Seed variance is ~0.003 for most. relu² at seed 1337 is a lucky outlier (0.023 
 | 3 | Is it the positive-side shape? | elu² (same positive side as relu) = 1.4778. But abs² (no activation, raw x²) = 1.4712, better than elu². | Positive-side linearity helps but is not the full story. **abs² suggests less processing is better.** |
 | 4 | Do gates help or hurt? | relu²_narrow=1.4908 (2/3 width, no gate) vs gated_relu²=1.4796 (2/3 width + gate). | Gates help at matched width. relu² wins on width, not because gates are bad. |
 | 5 | What exponent is best? | p=1.0: 1.4778. p=2.0: 1.4534. p=2.2: 1.4546. p=3.0: 1.5097. | p=2 optimal. 4 data points. |
-| 6 | Does threshold position matter? | shifted_relu(x-0.5)², shifted_relu(x+0.5)², hard_shrink variants running. | **Pending** act19 results. |
+| 6 | Does threshold position matter? | hard_shrink(0.2)²=1.4710, hard_shrink(0.5)²=1.4715 beat shifted_relu(±0.5)²≈1.4832–1.4862. Narrow symmetric dead zone wins. | **Answered.** Symmetric > one-sided. Less zeroing is better. |
 | 7 | Does suppressing negatives matter? | abs² (= x², no suppression) = 1.4712 — best non-baseline result ever. | Suppressing negatives may not help. **Pending** multi-seed confirmation (act21). |
 | 8 | Is the relu² baseline reliable? | Same seed, different commits: 1.4522 vs 1.4837 (0.031 gap). Original ran on dirty worktree. | **No.** Cross-wave comparisons against 1.4522 are unreliable. act21 will establish current-code baseline. |
 
@@ -157,6 +157,7 @@ Seed variance is ~0.003 for most. relu² at seed 1337 is a lucky outlier (0.023 
 - **act17 wave** (same code, same seed): softplus²=1.4788, clamp_gelu²=1.4809, leaky(0.01)²=1.4809, clamp_silu²=1.4855, relu²_narrow=1.4908. Hard zeros don't predict ranking.
 - **act18 wave** (same code, same seed): abs²=1.4712, elu²=1.4778, sharp_softplus²=1.4779, sharper_softplus²=1.4808. Less processing before squaring correlates with better performance.
 - **act18 surprise:** sharper_softplus (β=50, closer to relu) is WORSE than sharp_softplus (β=10). Approaching relu's shape does not help.
+- **act19 wave** (same code, same seed): hard_shrink(0.2)²=1.4710, hard_shrink(0.5)²=1.4715, softshrink²=1.4748, shifted_relu_neg²=1.4832, threshold²=1.4841, shifted_relu_pos²=1.4862. Narrow symmetric dead zones beat one-sided thresholds. Less zeroing correlates with better performance.
 
 ### What we cannot say
 
