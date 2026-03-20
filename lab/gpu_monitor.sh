@@ -143,8 +143,11 @@ while true; do
                 continue
             fi
 
-            launch_job "$gpu" "$name" "$steps" "$env_args"
-            mark_done "$name"
+            if launch_job "$gpu" "$name" "$steps" "$env_args"; then
+                mark_done "$name"
+            else
+                log "Failed to launch $name, leaving in queue"
+            fi
             sleep 10  # let GPU claim memory before checking next
         done
     fi
