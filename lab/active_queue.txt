@@ -26,3 +26,8 @@ act25_tanh2 1300 MLP_ACT=tanh2 CHECKPOINT_EVERY=500  # DONE (failed, retried as 
 act25_relu2_initscale_r2 1300 MLP_ACT=relu2_initscale CHECKPOINT_EVERY=500  # DONE (running on CUDA 0)
 act25_relu2_constgrad_r2 1300 MLP_ACT=relu2_constgrad CHECKPOINT_EVERY=500  # DONE (running on CUDA 2)
 act25_tanh2_r2 1300 MLP_ACT=tanh2 CHECKPOINT_EVERY=500  # DONE
+
+# Wave 26: Leak rate sweep at 4000 steps — find optimal sparsity
+act26_leaky03_4000 4000 MLP_ACT=leaky_relu2_03 CHECKPOINT_EVERY=500  # DONE
+act26_leaky07_4000 4000 MLP_ACT=leaky_relu2_07 CHECKPOINT_EVERY=500  # DONE
+act26_leaky05_seed42_4000 4000 MLP_ACT=leaky_relu2_05 SEED=42 CHECKPOINT_EVERY=500  # DONE
