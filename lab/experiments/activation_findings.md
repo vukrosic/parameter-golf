@@ -1,8 +1,8 @@
 # Activation Function Ablation: What We Know and Don't Know
 
-Baseline: `relu(x)²` at **1.4522 BPB** (500 steps, seed 1337, 1xL40S).
-
 Goal: understand which abstract properties make relu² work, not just rank functions.
+
+**Baseline reliability warning:** relu² at seed 1337 = 1.4522, but a same-seed rerun on different code commit gave 1.4837. The original baseline ran on a dirty worktree (commit 99d69e9) — we cannot verify what code produced 1.4522. Seed 2025 gave 1.4756. **The true relu² level is uncertain until act20/act21 controls come back.** All within-wave comparisons (same commit, same wave) remain valid. Cross-wave deltas against 1.4522 are unreliable.
 
 ---
 
@@ -30,7 +30,24 @@ Squaring is not universally helpful. It massively helps relu, barely helps silu,
 
 **Result:** Hard zeros are not the explanation. `softplus²` has no zeros and beats `clamp(silu(x), 0)²`. The positive-side shape matters more than whether negatives are exactly zero.
 
-**What's still unique about relu:** relu's positive side is pure `f(x) = x`. When squared: clean `x²`. silu's positive side curves sublinearly near zero. gelu's positive side also curves. Even after clamping, their squared shapes are messier near the origin. relu² has the simplest possible squared shape.
+**New act18 results — testing the linearity hypothesis (H2):**
+
+| Test | BPB | Positive side | Negative side |
+|---|---:|---|---|
+| **abs² (= x²)** | **1.4712** | linear | linear (mirrored) |
+| elu² | 1.4778 | linear (same as relu) | smooth, non-zero |
+| sharp_softplus² (β=10) | 1.4779 | nearly linear | nearly zero |
+| sharper_softplus² (β=50) | 1.4808 | very nearly linear | very nearly zero |
+
+**abs² is the best non-baseline result in all 40+ experiments.** It has NO activation function at all — just `f(x) = x²`. No zeros, no threshold, no nonlinearity before squaring.
+
+**This challenges the linearity hypothesis too.** If positive-side linearity were the key, elu² (same positive side as relu) should match relu². It doesn't — elu² = 1.4778 vs relu² = 1.4522 (but see baseline warning above). More importantly, abs² beats elu² by 0.007 despite having no threshold at all.
+
+**The softplus β sweep went the wrong direction.** β=50 (closer to relu) = 1.4808, worse than β=10 = 1.4779. If approaching relu's shape helped, higher β should be better. It isn't.
+
+**Emerging pattern:** the simplest function wins. abs² > elu² > sharp_softplus² > clamp variants. The less processing before squaring, the better. Squaring the raw linear output (abs² = x²) is the strongest result so far.
+
+**Caution:** abs² at 1.4712 is a single seed. relu² at seed 1337 was also a single-seed outlier (0.023 below seed 2025). We've queued multi-seed runs for both abs² and relu² (act21) to compare properly. Until those come back, abs² being better than relu² is a hypothesis, not a finding.
 
 ---
 
@@ -126,26 +143,33 @@ Seed variance is ~0.003 for most. relu² at seed 1337 is a lucky outlier (0.023 
 
 | # | Question | Key evidence | Status |
 |---|---|---|---|
-| 1 | Does squaring help? | relu²=1.4522 vs relu=1.5007 (-0.049). But silu²=1.4841 vs silu=1.4908 (-0.007). swiglu²=1.6055 vs swiglu=1.4668 (diverged). | Squaring helps relu massively but not other functions. Not a general rule. |
-| 2 | Are hard zeros the reason? | softplus² (no zeros) = 1.4788 beats clamp(silu,0)² (has zeros) = 1.4855. leaky_relu(0.01)² = 1.4809. leaky_relu(0.1)² = 1.4781. | **No.** Hard zeros are not the primary factor. Functions without zeros can match or beat functions with zeros. |
-| 3 | Is it the positive-side shape? | relu (linear positive side) + square = 1.4522. silu (curved positive side) + clamp + square = 1.4855. softplus (curved) + square = 1.4788. | Hypothesis: relu's linear positive side gives the cleanest x² shape. **Testing now** with elu² (linear positive, smooth negative) and sharp_softplus². |
-| 4 | Do gates help or hurt? | gated_relu² = 1.4796 (2/3 width + gate). relu²_narrow = 1.4908 (2/3 width, no gate). | Gates help at matched width (+0.011). relu² wins over gated variants because it has more width, not because gates are bad. |
-| 5 | What exponent is best? | p=1.0: 1.4778. p=2.0: 1.4534. p=2.2: 1.4546. p=3.0: 1.5097. | p=2 is optimal. Confirmed by 4 data points. |
-| 6 | Does threshold position matter? | Only relu at x=0 tested so far. | **Testing now** with shifted_relu(x±0.5)² and hard_shrink variants. |
-| 7 | Does suppressing negatives matter at all? | abs² (= x², no suppression) running. Will compare to relu² directly. | **Pending** act18_abs2 result. |
+| 1 | Does squaring help? | relu→relu²: -0.049. silu→silu²: -0.007. swiglu→swiglu²: +0.139 (diverged). | Squaring helps relu massively. Not a general rule. |
+| 2 | Are hard zeros the key? | softplus²=1.4788 (no zeros) beats clamp(silu,0)²=1.4855 (has zeros). | Hard zeros are not the primary factor. |
+| 3 | Is it the positive-side shape? | elu² (same positive side as relu) = 1.4778. But abs² (no activation, raw x²) = 1.4712, better than elu². | Positive-side linearity helps but is not the full story. **abs² suggests less processing is better.** |
+| 4 | Do gates help or hurt? | relu²_narrow=1.4908 (2/3 width, no gate) vs gated_relu²=1.4796 (2/3 width + gate). | Gates help at matched width. relu² wins on width, not because gates are bad. |
+| 5 | What exponent is best? | p=1.0: 1.4778. p=2.0: 1.4534. p=2.2: 1.4546. p=3.0: 1.5097. | p=2 optimal. 4 data points. |
+| 6 | Does threshold position matter? | shifted_relu(x-0.5)², shifted_relu(x+0.5)², hard_shrink variants running. | **Pending** act19 results. |
+| 7 | Does suppressing negatives matter? | abs² (= x², no suppression) = 1.4712 — best non-baseline result ever. | Suppressing negatives may not help. **Pending** multi-seed confirmation (act21). |
+| 8 | Is the relu² baseline reliable? | Same seed, different commits: 1.4522 vs 1.4837 (0.031 gap). Original ran on dirty worktree. | **No.** Cross-wave comparisons against 1.4522 are unreliable. act21 will establish current-code baseline. |
 
-### What we can say with evidence
+### What the data shows (within-wave comparisons only)
 
-- Squaring the activation gives a large gain specifically on relu (+0.049) but not in general.
-- The "hard zeros" explanation for relu²'s advantage is wrong — softplus² has no zeros and beats clamped-silu².
-- The gap between relu² and other squared functions is ~0.03, and the best non-relu² option so far is leaky_relu(0.1)² at 1.4781.
-- Gates are not harmful at equal parameter count — they recover ~0.011 at 2/3 width.
+- **act17 wave** (same code, same seed): softplus²=1.4788, clamp_gelu²=1.4809, leaky(0.01)²=1.4809, clamp_silu²=1.4855, relu²_narrow=1.4908. Hard zeros don't predict ranking.
+- **act18 wave** (same code, same seed): abs²=1.4712, elu²=1.4778, sharp_softplus²=1.4779, sharper_softplus²=1.4808. Less processing before squaring correlates with better performance.
+- **act18 surprise:** sharper_softplus (β=50, closer to relu) is WORSE than sharp_softplus (β=10). Approaching relu's shape does not help.
 
-### What we cannot say yet
+### What we cannot say
 
-- Whether relu's linear positive side is the actual mechanism (waiting on elu², sharp_softplus² results).
-- Whether suppressing negatives matters at all (waiting on abs² result).
-- Whether the threshold at x=0 is optimal or just the default (waiting on shifted_relu² results).
+- Whether abs² actually beats relu² (need multi-seed comparison on same code — act21 queued).
+- Why abs² works (no activation, no sparsity, no threshold — just square the linear output).
+- Whether these rankings hold at 1000+ steps (act21_abs2_1000 queued).
+- How much of the relu² literature explanation ("hard zeros + quadratic amplification") is applicable vs coincidental in this setup.
+
+### Confounds we haven't controlled for
+
+- **Initialization scale:** different activations produce different output magnitudes at init. The optimizer/LR may favor some scales over others.
+- **Cross-wave code changes:** baseline 1.4522 was on a dirty worktree. Many comparisons in this file span code versions.
+- **500-step horizon:** rankings may reverse at longer training, as seen with AttnRes.
 
 ---
 

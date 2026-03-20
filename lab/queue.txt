@@ -7,7 +7,6 @@
 # Narrower dead zone than relu (zero in [-0.2, 0.2] vs relu's (-inf, 0])
 # Hard threshold at 0.5 (discontinuous). Tests if the kink matters.
 # Symmetric sparsity: shrink from both sides. Tests if negative suppression is directional.
-act19_softshrink2_500 500 MLP_ACT=softshrink2
 
 # === Wave 20: elu family (same positive side as relu, different negative sides) ===
 # elu² is running in act18. These add more data points along the negative-side axis.
@@ -19,3 +18,12 @@ act20_softplus_centered2_500 500 MLP_ACT=softplus_centered2
 act20_relu2_ctrl_500 500 MLP_ACT=relu2
 # abs2 but only on positive side (= relu2, sanity check that act path works)
 act20_leaky05_500 500 MLP_ACT=leaky_relu2_05
+
+# === Wave 21: baseline calibration + depth check ===
+# We need relu2 and abs2 on multiple seeds to know if the gap is real.
+act21_relu2_seed42_500 500 MLP_ACT=relu2 SEED=42
+act21_relu2_seed99_500 500 MLP_ACT=relu2 SEED=99
+act21_abs2_seed42_500 500 MLP_ACT=abs2 SEED=42
+act21_abs2_seed99_500 500 MLP_ACT=abs2 SEED=99
+# Extend abs2 to 1000 steps — does it hold or reverse like AttnRes did?
+act21_abs2_1000 1000 MLP_ACT=abs2
