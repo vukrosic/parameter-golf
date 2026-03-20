@@ -649,8 +649,10 @@ class MLP(nn.Module):
             "gated_relu22",
             "mild_gated_relu22",
         )
+        # "narrow" variants use 2/3 hidden (same width as GLU) but no gate matrix.
+        is_narrow = act in ("relu2_narrow",)
         # GLU variants use 2/3 hidden to match parameter count (3 matrices vs 2).
-        hidden = (2 * mlp_mult * dim + 1) // 3 if is_glu else mlp_mult * dim
+        hidden = (2 * mlp_mult * dim + 1) // 3 if (is_glu or is_narrow) else mlp_mult * dim
         self.fc = CastedLinear(dim, hidden, bias=False)
         if is_glu:
             self.fc_gate = CastedLinear(dim, hidden, bias=False)
@@ -756,6 +758,32 @@ class MLP(nn.Module):
             # is more useful before or after selection.
             h = torch.relu(self.fc(x)) * torch.sigmoid(self.fc_gate(x))
             return self.proj(h.square())
+        # --- Tier 1: isolate why hard zeros + square interact ---
+        elif self.act == "clamp_silu2":
+            # silu with hard zeros added, then square. Tests if zeros are the key.
+            x = torch.clamp(F.silu(self.fc(x)), min=0)
+            return self.proj(x.square())
+        elif self.act == "clamp_gelu2":
+            # gelu with hard zeros added, then square.
+            x = torch.clamp(F.gelu(self.fc(x)), min=0)
+            return self.proj(x.square())
+        elif self.act == "softplus2":
+            # Always positive, never zero. Tests if non-negative + square is enough.
+            x = F.softplus(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "relu2_narrow":
+            # relu2 at 2/3 hidden dim (no gate). Parameter-matched to GLU variants.
+            x = torch.relu(self.fc(x))
+            return self.proj(x.square())
+        # --- Tier 2: understand the threshold shape ---
+        elif self.act == "leaky_relu2":
+            # Small leak (0.01), near-zero negatives. Tests how strict zeros must be.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.01)
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_01":
+            # Bigger leak (0.1). If much worse, hard zeros really matter.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.1)
+            return self.proj(x.square())
         else:
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
 
