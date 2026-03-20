@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.28616643,
+    "val_loss": 2.17163813
+  },
+  "generated_at_utc": "2026-03-20T14:27:54+00:00",
+  "int8_zlib_model_bytes": 15798290,
+  "int8_zlib_total_submission_bytes": 15867464,
+  "last_eval": {
+    "max_steps": 4000,
+    "step": 4000,
+    "val_bpb": 1.2822,
+    "val_loss": 2.165
+  },
+  "run_id": "act26_leaky05_seed42_4000"
+}

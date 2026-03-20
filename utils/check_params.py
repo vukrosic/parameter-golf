@@ -1,5 +1,9 @@
 import os
+import sys
 import torch
+
+# Add the parent directory to sys.path to allow importing from train_gpt
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from train_gpt import GPT, Hyperparameters
 
 def count_parameters(model):

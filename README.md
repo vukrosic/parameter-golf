@@ -99,6 +99,7 @@ On your remote machine, clone the repo onto local disk. All Python dependencies 
 cd /workspace
 git clone https://github.com/openai/parameter-golf.git
 cd parameter-golf
+git config core.hooksPath .githooks  # Enable shared pre-commit hooks
 ```
 
 Download our cached version of FineWeb. We'll use the 1024-token vocabulary for now.
