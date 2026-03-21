@@ -96,6 +96,77 @@ For 8xH100 at ~43ms/step over 600s:
 The time-based schedule auto-adapts, so this transfers correctly as long as
 MAX_WALLCLOCK_SECONDS=600 is set on the H100 run. No manual step calibration needed.
 
+## Multi-GPU Fleet Workflow
+
+Remote GPUs are disposable compute — no git setup needed on them. The workflow is:
+
+1. **Deploy code** to a new GPU via tarball (see GPU Setup below)
+2. **Copy a queue file** and start the scheduler
+3. **Pull results** back to this machine via SCP
+
+### Starting a GPU
+
+```bash
+# Pack and send the repo
+tar czf /tmp/pg.tar.gz -C /root parameter-golf/
+sshpass -p "$PASS" scp -P $PORT /tmp/pg.tar.gz root@$HOST:/tmp/
+sshpass -p "$PASS" ssh -p $PORT root@$HOST 'cd /root && tar xzf /tmp/pg.tar.gz'
+
+# Copy the right queue and start the scheduler
+sshpass -p "$PASS" ssh -p $PORT root@$HOST \
+  'cp parameter-golf/queues/archive/queue_arch1_weightsharing.txt parameter-golf/queues/active.txt \
+   && cd parameter-golf && nohup python3 infra/gpu_scheduler.py > /tmp/scheduler.log 2>&1 &'
+```
+
+### Monitoring
+
+```bash
+# Live table of all GPUs (training progress, GPU stats, git status)
+watch -c -n 30 bash infra/watch_all_gpus.sh
+```
+
+### Pulling Results
+
+Results are saved on each GPU at `/root/results/<run_id>/`. Pull them back:
+
+```bash
+# Pull everything new from all GPUs (skips already-pulled runs)
+bash infra/pull_results.sh
+
+# Pull from specific GPUs only
+bash infra/pull_results.sh ARCH1 ARCH2
+```
+
+### Auto-Pull Loop
+
+Keep results syncing automatically in the background:
+
+```bash
+# Start (pulls every 2 min)
+nohup bash infra/auto_pull.sh 2 > /tmp/auto_pull.log 2>&1 &
+
+# Check it's working
+tail -f /tmp/auto_pull.log
+
+# Stop
+pkill -f auto_pull.sh
+```
+
+### Adding a New GPU
+
+1. Add credentials to `infra/gpu_creds.sh`:
+   ```bash
+   GPU_ARCH5_PORT=12345
+   GPU_ARCH5_PASS="yourpassword"
+   ```
+2. It auto-appears in `watch_all_gpus.sh` and `pull_results.sh` — no other changes needed.
+
+### Why Not Git on Remote GPUs?
+
+- Results don't need git history — they're just JSON + logs
+- Auto-commit loops break silently (82 stale unpushed commits on older GPUs proved this)
+- SCP is stateless, always works, no auth setup needed on remotes
+
 ## Interpreting Results
 
 **val_bpb is the only metric that matters for the challenge.**
