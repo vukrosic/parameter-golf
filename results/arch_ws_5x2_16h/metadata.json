@@ -1,0 +1,28 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "NUM_HEADS": "16",
+    "NUM_KV_HEADS": "4",
+    "RUN_ID": "arch_ws_5x2_16h",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-21T17:16:22+00:00",
+  "git": {
+    "commit": null,
+    "commit_short": null,
+    "dirty_worktree": false
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "580.126.09",
+      "memory_total": "32607 MiB",
+      "name": "NVIDIA GeForce RTX 5090"
+    }
+  },
+  "log_path": "logs/arch_ws_5x2_16h.txt",
+  "run_id": "arch_ws_5x2_16h"
+}
