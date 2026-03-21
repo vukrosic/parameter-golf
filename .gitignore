@@ -19,4 +19,5 @@ results/**/wandb/
 results/**/events.out.tfevents*
 records/**/train.log
 !records/**/submission.json
+lab/gpu_creds.sh
 /my-life/

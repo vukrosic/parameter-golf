@@ -2,6 +2,16 @@
 
 All measurements use the default 9-layer / 512-dim / 8-head / 4-KV-head setup with batch 524,288 tokens. On single-GPU runs this means `grad_accum=8`; the L40S range spans multiple activation experiments on that same base config.
 
+## Cost-Efficiency Ranking (cost per step, lower = better)
+
+1. **RTX 5090 ($0.30)** — $0.050/1k steps — fastest single-GPU AND cheapest per step!
+2. **RTX 3090 (spot $0.10)** — $0.073/1k steps — still great value, 4x slower
+3. **L40S ($0.28)** — $0.074/1k steps — nearly tied with 3090 spot, 2.8x faster wall-clock
+4. **RTX 4090* ($0.17)** — $0.097/1k steps — theoretical, needs measurement
+5. **1xH100* ($1.29)** — $0.123/1k steps — theoretical
+6. **8xH100 ($10.32)** — $0.123/1k steps — fastest wall-clock (10 min full run)
+7. **RTX 3090 (on-demand $0.21)** — $0.153/1k steps — 3x worse than 5090
+
 ## Measured Step Times
 
 | GPU | VRAM | Step avg (ms) | 500 steps | 13,780 steps | Source | Date |
@@ -58,16 +68,6 @@ Step times marked with * are **theoretical estimates**. RTX 5090 and L40S are no
 | 1xH100 | ~344* | ~1.32 hr | **$1.70*** | $0.062* | $0.0001232* |
 | 8xH100 | 43 | 0.165 hr | **$1.70** | $0.062 | $0.0001232 |
 | RTX 3090 (on-demand) | 2,629 | 10.06 hr | **$2.11** | $0.077 | $0.0001534 |
-
-### Cost-Efficiency Ranking (cost per step, lower = better)
-
-1. **RTX 5090 ($0.30)** — $0.050/1k steps — fastest single-GPU AND cheapest per step!
-2. **RTX 3090 (spot $0.10)** — $0.073/1k steps — still great value, 4x slower
-3. **L40S ($0.28)** — $0.074/1k steps — nearly tied with 3090 spot, 2.8x faster wall-clock
-4. **RTX 4090* ($0.17)** — $0.097/1k steps — theoretical, needs measurement
-5. **1xH100* ($1.29)** — $0.123/1k steps — theoretical
-6. **8xH100 ($10.32)** — $0.123/1k steps — fastest wall-clock (10 min full run)
-7. **RTX 3090 (on-demand $0.21)** — $0.153/1k steps — 3x worse than 5090
 
 ### Theoretical vs Measured Step Times
 
