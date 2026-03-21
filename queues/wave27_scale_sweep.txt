@@ -1,0 +1,64 @@
+# Wave 27: Model Scale Sweep — smaller model, more steps
+# Hypothesis: scaling down model trains faster per step, allowing more compute-per-param
+# in same wall-clock budget → may rival or beat larger models in competition's 10-min window.
+#
+# All using best known activation: MLP_ACT=leaky_relu2_05
+# WARMDOWN_ITERS scaled to ~8.7% of total steps (matching 1200/13780 baseline ratio)
+# head_dim = model_dim / num_heads (must be even)
+#
+# Scale ladder:
+#   ultra  : 1L,  32dim, 4h, 2kv → head_dim=8  (extreme minimum)
+#   pico   : 2L,  64dim, 4h, 2kv → head_dim=16
+#   nano   : 3L, 128dim, 4h, 2kv → head_dim=32
+#   micro  : 5L, 192dim, 4h, 2kv → head_dim=48
+#   mini   : 7L, 256dim, 4h, 4kv → head_dim=64
+#   small  : 8L, 320dim, 4h, 2kv → head_dim=80
+#   medium : 9L, 384dim, 6h, 3kv → head_dim=64
+#   base   : 9L, 512dim, 8h, 4kv → head_dim=64 (current baseline)
+
+# === Medium: 9L, 384dim — slightly smaller than baseline, more steps ===
+scale_med_9L384_15k 15000 NUM_LAYERS=9 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=1300
+
+# === Small: 8L, 320dim — step time ~60% of base ===
+scale_small_8L320_18k 18000 NUM_LAYERS=8 MODEL_DIM=320 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=1566
+
+# === Mini: 7L, 256dim — step time ~35% of base ===
+scale_mini_7L256_25k 25000 NUM_LAYERS=7 MODEL_DIM=256 NUM_HEADS=4 NUM_KV_HEADS=4 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=2175
+
+# === Micro: 5L, 192dim — step time ~15% of base ===
+scale_micro_5L192_50k 50000 NUM_LAYERS=5 MODEL_DIM=192 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=4350
+
+# === Nano: 3L, 128dim — step time ~5% of base ===
+scale_nano_3L128_100k 100000 NUM_LAYERS=3 MODEL_DIM=128 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=8700
+
+# === Pico: 2L, 64dim — step time ~1% of base ===
+scale_pico_2L64_200k 200000 NUM_LAYERS=2 MODEL_DIM=64 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=17400
+
+# === Ultra: 1L, 32dim — theoretical minimum ===
+scale_ultra_1L32_500k 500000 NUM_LAYERS=1 MODEL_DIM=32 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=43500
+
+# === Seed 42 repeats for robustness (medium → nano) ===
+scale_med_9L384_s42 15000 NUM_LAYERS=9 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=1300 SEED=42
+scale_small_8L320_s42 18000 NUM_LAYERS=8 MODEL_DIM=320 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=1566 SEED=42
+scale_mini_7L256_s42 25000 NUM_LAYERS=7 MODEL_DIM=256 NUM_HEADS=4 NUM_KV_HEADS=4 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=2175 SEED=42
+scale_micro_5L192_s42 50000 NUM_LAYERS=5 MODEL_DIM=192 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=4350 SEED=42
+scale_nano_3L128_s42 100000 NUM_LAYERS=3 MODEL_DIM=128 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=8700 SEED=42
+
+# === MLP multiplier variants — does wider MLP help at small scale? ===
+scale_mini_7L256_m4 25000 NUM_LAYERS=7 MODEL_DIM=256 NUM_HEADS=4 NUM_KV_HEADS=4 MLP_MULT=4 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=2175
+scale_nano_3L128_m4 100000 NUM_LAYERS=3 MODEL_DIM=128 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=4 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=8700
+
+# === relu2 baseline for comparison at key scales ===
+scale_mini_7L256_relu2 25000 NUM_LAYERS=7 MODEL_DIM=256 NUM_HEADS=4 NUM_KV_HEADS=4 MLP_MULT=2 MLP_ACT=relu2 WARMDOWN_ITERS=2175
+scale_nano_3L128_relu2 100000 NUM_LAYERS=3 MODEL_DIM=128 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=relu2 WARMDOWN_ITERS=8700
+
+# === Depth vs width at tiny scale: same param count, different shape ===
+# ~128dim,3L  vs  64dim,12L (roughly similar params)
+scale_deep_12L64_200k 200000 NUM_LAYERS=12 MODEL_DIM=64 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=17400
+
+# === MHA (no GQA) at small scale ===
+scale_nano_mha_3L128 100000 NUM_LAYERS=3 MODEL_DIM=128 NUM_HEADS=4 NUM_KV_HEADS=4 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=8700
+
+# === Back to pico with seed42 and ultra-deep variant ===
+scale_pico_2L64_s42 200000 NUM_LAYERS=2 MODEL_DIM=64 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=17400 SEED=42
+scale_deep_24L32_500k 500000 NUM_LAYERS=24 MODEL_DIM=32 NUM_HEADS=4 NUM_KV_HEADS=2 MLP_MULT=2 MLP_ACT=leaky_relu2_05 WARMDOWN_ITERS=43500
