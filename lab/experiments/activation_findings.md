@@ -534,37 +534,115 @@ All three leaky variants beat relu² (probability of all three by chance: ~12.5%
 
 ## What is still uncertain
 
-1. **Whether `leaky(0.5)²` stays best at full submission length.** The ~0.003 advantage is consistent across every checkpoint, but the real test is the 13k run against the relu² baseline (1.2498 post-quant). This is the highest-priority experiment.
+1. **Whether `leaky(0.5)²` holds at 13k steps.** Running now (2 seeds on GPUs 2-3). The ~0.003 advantage is consistent through 6k steps but has never been tested at submission length. This is the single most important experiment.
 
-2. **Whether leaky(0.8)² is genuinely better than leaky(0.5)².** It leads at 500 steps (1.4595 vs 1.4708) but this could be an init-scale artifact. Needs 4000+ step validation.
+2. **Whether gradfloor stacks with leaky.** `leaky(0.5)²_gradfloor` is running now (500-step on GPU 0, 2k on GPU 1). If this shows improvement, it jumps to the front of the 13k queue. Gradfloor gave +0.009 on relu² — if even half of that stacks with leaky, it's a bigger gain than the leaky advantage itself.
 
-3. **Whether gradfloor can be combined with leaky.** `gradfloor` was the best H1 variant on relu². Has anyone tried `leaky(0.5)²_gradfloor`? This combines the best H1 tweak with the best H3 tweak.
+3. **Whether leaky(0.8)² is genuinely better than leaky(0.5)².** It leads at 500 steps by 0.011 BPB — but recall that abs² led by a similar margin at 500 steps and lost it by 5k. Queued for 4k validation.
 
-4. **The H2/H1 entanglement.** We can't cleanly separate "compression hurts" from "gradient saturation hurts" because bounded activations always have both. A custom-backward bounded activation that maintains proportional gradients would resolve this.
+4. **The H2/H1 entanglement.** We cannot cleanly separate "compression hurts" from "gradient saturation hurts." The defense argues log1p_relu² (unbounded, no gradient saturation, but sublinear growth, hurts by +0.007) and clamped16 (bounded, some gradient death, but *helps* by -0.008) show H2 has an independent component. The critique argues both could be explained by gradient dynamics alone. Verdict: both sides have a point. H2 is probably *partially* independent of H1, but the entanglement is real and the document should not present them as cleanly separate. **This is a theoretical question, not a submission-blocking one.**
 
-5. **Cross-hypothesis experiments are still running.** leaky(0.5)³, leaky(0.5)^1.5, softplus variants, selu² rerun are in progress. Early signs: leaky(0.5)^1.5 is at 2.2551 at step 100 (very bad — confirms sublinear exponents fail on leaky too).
+5. **Whether H3 is real or noise.** The critique is right that individual leaky vs relu² comparisons are at the noise floor. The defense is right that 6+ independent activations all beating relu² is unlikely by chance. The 13k runs (currently executing) will settle this — if both seeds show leaky beating the relu² 13k baseline (1.2498 post-quant), H3 is real. If one or both don't, H3 is noise and relu² is the answer.
+
+---
+
+## Critique/defense summary — what we accept and what we reject
+
+A critique and defense were written (see `critique_activation_findings.md` and `defense_activation_findings.md`). Here is the judge's ruling:
+
+### Accepted from critique
+
+| Point | Action taken |
+|---|---|
+| Gradfloor is underemphasized | Moved to #1 priority, running at 500/2k/4k/6k/13k |
+| H2 may not be independent of H1 | Acknowledged — noted as entangled, not separate law |
+| Too many exploratory 500-step experiments | Cut 8 experiments that test already-failed activations (x_absx 2k/4k/6k, gelu2 2k/4k, linneg05 2k/4k, bipolar rerun) |
+| Not enough full-length validation | Added 13k runs for gradfloor+leaky, 4k/6k for leaky08 and clamped16 |
+| RESULTS.md contradicts findings | Will add supersession note |
+| "Squaring helps" stated too broadly | Only directly tested for relu and silu; other bases are inferential |
+| relu^2.2 result is confounded | Controlled re-run executing now (GPU 5) |
+
+### Rejected from critique
+
+| Point | Why |
+|---|---|
+| "H3 is just noise" | 6 independent activations all beating relu² at p<0.02. The 13k runs will definitively settle it. |
+| "Single-seed is meaningless" | Appropriate for screening; final decision uses 2 seeds at 13k. |
+| "The program is too sprawling" | 500-step screens cost 10 min each; gradfloor emerged from exactly this approach. The cost of under-exploring (missing gradfloor) exceeds the cost of 44 cheap screens. |
+| "x·\|x\| destroys H3" | x·\|x\| allows arbitrarily large negative outputs, changing the optimization landscape. H3 is a dose-response effect — moderate leak helps, full sign preservation hurts. |
+
+### Accepted from defense
+
+| Point | Note |
+|---|---|
+| Screening is cheap and produced gradfloor | The scientific approach paid off — but we now have enough screening data to shift to validation |
+| H2 has independent evidence (log1p, clamped16) | These are real counterexamples to "H2 = H1" |
+| Consistency across 6+ activations matters | Even with imperfect independence, the pattern is suggestive |
+| clamped16 is evidence, not a contradiction | It shows mild bounding can help (regularization), while extreme bounding hurts |
+
+### Rejected from defense
+
+| Point | Why |
+|---|---|
+| "RESULTS.md is a historical record, don't update" | Readers will get confused. A note saying "superseded by activation_findings.md" costs nothing and prevents errors. |
+| "The pipeline is not bottlenecked at validation" | It was — 40+ screens done, only 3 activations at 6k, zero at 13k (until today's runs). The fix is correct but the defense shouldn't claim the problem didn't exist. |
+| "Science and competition aren't in tension" | They partially are. The 11 cross-hypothesis experiments (leaky³, softplus_beta0.5, etc.) are pure science with near-zero submission impact. They should run only after validation runs finish, not in parallel. |
 
 ---
 
 ## Strategic assessment
 
-**Rules discovered (ranked by effect size):**
+**Rules discovered (ranked by effect size and confidence):**
 
-| Rule | Effect size | Noise multiple | Status |
-|---|---:|---:|---|
-| H1: Proportional gradients required | +0.11 BPB penalty if removed | 37x | **Confirmed across 3 bases** |
-| H2: Don't compress output range | +0.01-0.10 BPB | 3-33x | **Confirmed, but entangled with H1** |
-| Don't square gated activations | +0.04-0.14 BPB | 14-46x | **Confirmed** |
-| H3: Preserve some negative signal | -0.003 BPB gain | 1x (at noise) | **Supported by consistency across 6+ variants** |
-| Width > gating at matched params | ~0 BPB difference | — | **Confirmed** |
-| p=2 is the optimal exponent | p=3 diverges, p=1.5 is worse | — | **Confirmed** |
+| Rule | Effect size | Noise× | Confidence | Note |
+|---|---:|---:|---|---|
+| H1: Gradients must scale with activation | +0.11 BPB if removed | 37x | **Very high** | Confirmed across 3 base functions |
+| Don't square gated activations | +0.04-0.14 BPB | 14-46x | **Very high** | Double multiplicative interaction |
+| H2: Don't compress output range | +0.01-0.10 BPB | 3-33x | **High, but entangled with H1** | log1p and clamped16 show partial independence |
+| Gradient floor helps (prevent neuron death) | -0.009 BPB | 3x | **Moderate** (single seed, 500 steps only) | Needs 4k+ validation |
+| H3: Moderate negative signal helps | -0.003 BPB | 1x | **Suggestive** (6+ variants, but near noise) | 13k runs will decide |
+| p=2 is the optimal exponent | p=3 diverges, p=1.5 is worse | — | **High** | Confirmed for relu and leaky |
+| Width > gating at matched params | ~0 BPB | — | **Moderate** (500 steps only) | Not critical for submission |
 
-**Have we found something better than relu²?** Yes — `leaky(0.5)²` is consistently ~0.003 BPB better. Modest but real.
+**Current submission candidates (ranked):**
 
-**What's the biggest remaining win?** The `gradfloor` result (+0.009 over relu²) combined with leaky's +0.003 could potentially stack. `leaky(0.5)²_gradfloor` is the obvious next experiment.
+| Candidate | Best BPB | Steps tested to | Status | Potential |
+|---|---:|---:|---|---|
+| leaky(0.5)²_gradfloor | *untested* | running 500/2k | **Testing now** | Highest — could stack +0.009 + 0.003 = +0.012 |
+| leaky(0.5)² | 1.2708 post-quant | 6000 | **13k running** | Solid — consistent +0.003 over relu² |
+| relu²_gradfloor | 1.4746 post-quant | 500 | Queued 4k | Good — +0.009 over relu² at 500 |
+| leaky(0.8)² | 1.4635 post-quant | 500 | Queued 4k | Unknown — 500-step lead could be artifact |
+| relu² | 1.2498 post-quant | 13000 | **Baseline** | Known quantity |
 
-**Next actions (priority order):**
-1. Run leaky(0.5)² at 13k steps (2 seeds) — decides whether to submit it
-2. Try leaky(0.5)²_gradfloor — could stack both improvements
-3. Validate leaky(0.8)² at 4000+ steps — is the 500-step lead real?
-4. Wait for cross-hypothesis experiments to finish
+**Experiments currently running (8 GPUs):**
+
+| GPU | Experiment | Steps | ETA | Purpose |
+|---:|---|---:|---|---|
+| 0 | leaky(0.5)²_gradfloor | 500 | ~25 min | Screen novel combination |
+| 1 | leaky(0.5)²_gradfloor | 2000 | ~110 min | Validate if 500 looks good |
+| 2 | leaky(0.5)² seed 42 | 13780 | ~7.5 hrs | **Submission decision** | [i'm not so sure if you need both seeds, let's first test one and see the difference to the baseline]
+| 3 | leaky(0.5)² seed 1337 | 13780 | ~7.5 hrs | **Submission decision** |
+| 4 | relu^1.8 | 500 | ~25 min | Exponent sweep |
+| 5 | relu^2.2 | 500 | ~25 min | Resolve confounded earlier result |
+| 6 | x_silu | 500 | ~25 min | Cross-hypothesis |
+| 7 | x_tanh | 500 | ~25 min | Cross-hypothesis |
+
+**After GPUs 0, 4-7 free (~30 min):** They pick up tier 1-2 from the queue: leaky05_gradfloor 13k (2 seeds), leaky05_gradfloor 4k, leaky08 4k, clamped16 4k, gradfloor_relu2 4k.
+
+**Decision tree:**
+
+```
+leaky05_gradfloor 500-step result:
+├── Beats leaky(0.5)² by >0.005 → RUN IT AT 13k (both seeds)
+│   ├── 13k beats relu² 13k baseline → SUBMIT leaky05_gradfloor
+│   └── 13k within noise of relu² → SUBMIT relu²
+├── Within 0.005 of leaky(0.5)² → Effects don't stack cleanly
+│   └── Fall back to leaky(0.5)² 13k results
+└── Worse than leaky(0.5)² → Gradfloor hurts leaky (unexpected)
+    └── Fall back to leaky(0.5)² 13k results
+
+leaky(0.5)² 13k results:
+├── Both seeds beat relu² baseline (1.2498) by >0.003 → SUBMIT leaky(0.5)²
+├── Mixed (one better, one worse) → Need 3rd seed or accept relu²
+└── Both within noise or worse → SUBMIT relu² (H3 was noise)
+```

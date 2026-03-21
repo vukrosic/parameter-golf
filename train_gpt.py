@@ -692,6 +692,22 @@ class _Leaky05SquareGradfloor(torch.autograd.Function):
         g = torch.sign(g) * torch.clamp(g.abs(), min=0.5)
         return grad_output * g
 
+class _Leaky08SquareGradfloor(torch.autograd.Function):
+    """Forward: leaky_relu(x, 0.8)². Backward: grad floored at 0.5."""
+    @staticmethod
+    def forward(ctx, x):
+        y = torch.where(x >= 0, x, 0.8 * x)
+        ctx.save_for_backward(x)
+        return y * y
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, = ctx.saved_tensors
+        # Natural gradient of leaky(0.8,x)² is 2x for x>=0, 1.28x for x<0.
+        # Floor at 0.5 to prevent neuron death near zero.
+        g = torch.where(x >= 0, 2.0 * x, 1.28 * x)
+        g = torch.sign(g) * torch.clamp(g.abs(), min=0.5)
+        return grad_output * g
+
 class _Abs2ConstGrad(torch.autograd.Function):
     """Forward: x². Backward: constant 1 everywhere."""
     @staticmethod
@@ -997,6 +1013,8 @@ class MLP(nn.Module):
             return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradfloor"))
         elif self.act == "leaky05_gradfloor":
             return self.proj(_Leaky05SquareGradfloor.apply(self.fc(x)))
+        elif self.act == "leaky08_gradfloor":
+            return self.proj(_Leaky08SquareGradfloor.apply(self.fc(x)))
         elif self.act == "relu2_gradceil":
             return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradceil"))
         # --- Phase 2: H2 — signal compression experiments ---

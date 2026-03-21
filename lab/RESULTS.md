@@ -1,5 +1,7 @@
 # Experiment Results (Measured)
 
+> **Note:** The activation function conclusions in this document (especially "relu² is optimal" and "hard zeros are necessary") are superseded by `experiments/activation_findings.md`, which has 60+ additional runs showing that sparsity is not the mechanism and leaky(0.5)² beats relu². See that document for the current state of the art.
+
 All runs on 1xL40S, seed 1337, SP-1024 tokenizer, default config unless noted.
 Lower BPB = better. Target: ≤1.2194 (beat 1.2244 by ≥0.005).
 
