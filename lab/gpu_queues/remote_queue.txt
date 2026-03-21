@@ -1,0 +1,17 @@
+# Remote GPU (RTX 3090) — LR validation + Per-layer LR + baseline calibration
+# Format: <name> <steps> [ENV_VAR=value ...]
+
+# Phase 1: LR validation at 500 steps (confirm LR=0.06 at longer horizon)
+p1_mlr06_500 500 MATRIX_LR=0.06
+p1_mlr04_500 500 MATRIX_LR=0.04
+
+# Phase 3: MLP width (500 steps, ~21 min)
+p3_mlp_3 500 MLP_MULT=3
+p3_mlp_1 500 MLP_MULT=1
+
+# Phase 4: Gradient clipping (500 steps)
+p4_clip_1.0 500 GRAD_CLIP_NORM=1.0
+p4_clip_0.5 500 GRAD_CLIP_NORM=0.5
+
+# Phase 4: Softcap/QK knobs (500 steps)
+p4_qkgain_1.0 500 QK_GAIN_INIT=1.0
