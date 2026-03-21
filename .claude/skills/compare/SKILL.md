@@ -26,7 +26,7 @@ Load all results, group by experiment family (prefix), identify the most impactf
 
 ## Key Scripts
 - `scripts/compare_results.sh` — Leaderboard and side-by-side comparison
-- `lab/analyze.py` — Existing analysis tool for deeper log parsing
+- `infra/analyze.py` — Existing analysis tool for deeper log parsing
 
 ## Key Files
 - `results/*/submission.json` — Final metrics (val_bpb, val_loss)

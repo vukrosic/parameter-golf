@@ -20,7 +20,7 @@ Every result in this document supports three rules. If you remember nothing else
 
 ### What the activation functions look like
 
-![Phase 2 activation functions](../activation_functions_phase2.png)
+![Phase 2 activation functions](../figures/activation_functions_phase2.png)
 
 Six panels showing every activation we tested, organized by hypothesis. **Top row** shows the base functions (before squaring); **bottom row** shows what happens after squaring. Key things to notice:
 - **Top-left (H3):** leaky(0.5) has a gentle negative slope vs relu's hard cutoff at zero — this is the difference that gives ~0.003 BPB [add that this is at which number of steps and it's not tested at max]
@@ -30,7 +30,7 @@ Six panels showing every activation we tested, organized by hypothesis. **Top ro
 
 ### How gradient scaling affects performance
 
-![Gradient scaling results](../gradient_scaling_h1.png)
+![Gradient scaling results](../figures/gradient_scaling_h1.png)
 
 **Left panel:** gradient magnitude vs activation magnitude for each variant. The natural relu² gradient (2x) is the orange line. Const-grad is the flat blue line at y=1. Notice how gradfloor (green, with the kink) adds a minimum gradient floor — this was the best variant.
 
@@ -206,7 +206,7 @@ leaky(0.5)² satisfies all three, which is why it wins.
 
 **Question:** How important is the specific gradient scaling of relu² (grad = 2x for x>0), and is 2x optimal?
 
-![Gradient scaling results](../gradient_scaling_h1.png)
+![Gradient scaling results](../figures/gradient_scaling_h1.png)
 
 *Left: gradient magnitude vs activation for each variant. Right: resulting BPB (lower is better). The pattern is clear — proportional gradients (top bars) beat flat gradients (bottom bars).*
 
@@ -249,7 +249,7 @@ This table proves H1 is universal, not relu-specific:
 
 **Question:** Does bounding/compressing the activation output range hurt, and how much?
 
-![Activation function shapes](../activation_functions_phase2.png)
+![Activation function shapes](../figures/activation_functions_phase2.png)
 
 *Top-right panel shows the bounded functions (tanh, sigmoid, erf, etc.) that flatten for large inputs. Bottom-middle shows how squaring makes the compression even worse. Compare to the unbounded relu² in bottom-left.*
 
@@ -298,7 +298,7 @@ The worst H2 results are exactly the ones that also violate H1 most severely. **
 
 **Question:** Does allowing signal for negative inputs improve learning?
 
-![Activation function shapes](../activation_functions_phase2.png)
+![Activation function shapes](../figures/activation_functions_phase2.png)
 
 *Top-left panel shows the key comparison: relu (hard cutoff at zero) vs leaky variants (gentle negative slopes). Bottom-left shows how these look after squaring — notice x·|x| (green dashed) is the only one that produces negative output.*
 

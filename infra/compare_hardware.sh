@@ -1,6 +1,6 @@
 #!/bin/bash
 # Compare val_bpb between L40S and H100 runs at matched step counts
-# Usage: bash lab/compare_hardware.sh logs/l40s_run.txt logs/h100_run.txt
+# Usage: bash infra/compare_hardware.sh logs/l40s_run.txt logs/h100_run.txt
 #
 # Extracts val_bpb at each logged step and computes:
 #   - Side-by-side comparison

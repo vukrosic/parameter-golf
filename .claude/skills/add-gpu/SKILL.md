@@ -17,7 +17,7 @@ Ask for:
 - **Hourly cost** ($/hr) — for budget tracking
 - **GPU type** — for step timing estimates
 
-The SSH host is shared across all GPUs (read `$HOST` from `lab/gpu_creds.sh`).
+The SSH host is shared across all GPUs (read `$HOST` from `infra/gpu_creds.sh`).
 
 ### Step 2: Test connectivity
 ```bash
@@ -25,7 +25,7 @@ bash .claude/skills/add-gpu/scripts/add_gpu.sh <port> <password>
 ```
 
 ### Step 3: Add to gpu_creds.sh
-Append to `lab/gpu_creds.sh`:
+Append to `infra/gpu_creds.sh`:
 ```bash
 # <LABEL> (added YYYY-MM-DD)
 GPU_<LABEL>_PORT=<port>
@@ -41,7 +41,7 @@ bash .claude/skills/setup/scripts/setup_remote.sh <port> <password>
 ### Step 5: Verify with smoke test
 ```bash
 bash .claude/skills/fleet/scripts/ssh_run.sh <port> <password> \
-    "ITERATIONS=5 VAL_LOSS_EVERY=0 bash lab/run_experiment.sh smoke_test 5"
+    "ITERATIONS=5 VAL_LOSS_EVERY=0 bash infra/run_experiment.sh smoke_test 5"
 ```
 
 ### Step 6: Update cost tracking

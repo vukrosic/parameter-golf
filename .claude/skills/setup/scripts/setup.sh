@@ -30,8 +30,8 @@ echo "  Done."
 
 # 3. Git hooks
 echo "[3/4] Installing git hooks..."
-if [ -f "lab/install_git_hooks.sh" ]; then
-    bash lab/install_git_hooks.sh
+if [ -f "infra/install_git_hooks.sh" ]; then
+    bash infra/install_git_hooks.sh
 else
     git config core.hooksPath .githooks 2>/dev/null || true
 fi
@@ -40,7 +40,7 @@ echo "  Done."
 # 4. Smoke test (optional)
 if [[ "${1:-}" == "--smoke-test" ]]; then
     echo "[4/4] Running smoke test (5 steps)..."
-    ITERATIONS=5 VAL_LOSS_EVERY=0 bash lab/run_experiment.sh setup_smoke_test 5
+    ITERATIONS=5 VAL_LOSS_EVERY=0 bash infra/run_experiment.sh setup_smoke_test 5
     echo "  Smoke test passed!"
     # Clean up smoke test artifacts
     rm -rf results/setup_smoke_test logs/setup_smoke_test.txt
@@ -51,6 +51,6 @@ fi
 echo ""
 echo "=== Setup complete! ==="
 echo "Next steps:"
-echo "  - Run an experiment: lab/run_experiment.sh my_test 200"
+echo "  - Run an experiment: infra/run_experiment.sh my_test 200"
 echo "  - Set up GPU fleet: use /add-gpu skill"
 echo "  - Check fleet status: use /fleet skill"

@@ -5,7 +5,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
-CREDS_FILE="$REPO_ROOT/lab/gpu_creds.sh"
+CREDS_FILE="$REPO_ROOT/infra/gpu_creds.sh"
 
 if [ ! -f "$CREDS_FILE" ]; then
     echo "ERROR: $CREDS_FILE not found. Run /add-gpu to set up credentials." >&2

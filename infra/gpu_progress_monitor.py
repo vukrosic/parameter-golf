@@ -10,7 +10,7 @@ Shows, per GPU:
 - latest val_bpb if available
 
 Usage:
-    python3 lab/gpu_progress_monitor.py
+    python3 infra/gpu_progress_monitor.py
 """
 
 from __future__ import annotations

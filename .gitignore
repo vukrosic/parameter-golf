@@ -19,10 +19,8 @@ results/**/wandb/
 results/**/events.out.tfevents*
 records/**/train.log
 !records/**/submission.json
-lab/gpu_creds.sh
-lab/gpu
-lab/gpu_sync_cron.sh
-lab/gpu_sync_loop.sh
-lab/REMOTE_GPU_CONTROL.md
-lab/watch_all_gpus.sh
+infra/gpu_creds.sh
+infra/gpu_sync_cron.sh
+infra/gpu_sync_loop.sh
+infra/watch_all_gpus.sh
 /my-life/

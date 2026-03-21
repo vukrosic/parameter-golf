@@ -2,8 +2,8 @@
 # Pull experiment results from all remote GPUs via SCP.
 # Auto-detects GPUs from gpu_creds.sh.
 # Usage:
-#   lab/pull_results.sh              # pull all results from all GPUs
-#   lab/pull_results.sh ARCH1 ARCH2  # pull only from specific GPUs
+#   infra/pull_results.sh              # pull all results from all GPUs
+#   infra/pull_results.sh ARCH1 ARCH2  # pull only from specific GPUs
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

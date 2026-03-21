@@ -21,10 +21,10 @@ This will:
 
 ### Alternative: Use existing cron script
 ```bash
-bash lab/gpu_sync_cron.sh
+bash infra/gpu_sync_cron.sh
 ```
 Then summarize what was synced.
 
 ## Key Scripts
 - `scripts/collect_results.sh` — Full collection with summary
-- `lab/gpu_sync_cron.sh` — Existing sync (same logic, less reporting)
+- `infra/gpu_sync_cron.sh` — Existing sync (same logic, less reporting)

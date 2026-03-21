@@ -27,4 +27,4 @@ This shows:
 
 ## Key Scripts
 - `scripts/cost_report.sh` — Full cost report
-- `lab/watch_all_gpus.sh` — Has cost tracking built in
+- `infra/watch_all_gpus.sh` — Has cost tracking built in

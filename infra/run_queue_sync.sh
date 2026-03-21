@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: lab/run_queue_sync.sh <queue_file> [gpu_label]
+# Usage: infra/run_queue_sync.sh <queue_file> [gpu_label]
 #
 # Runs experiments from a queue file one at a time.
 # After each experiment, commits results and pushes to git.
@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-QUEUE_FILE="${1:?Usage: lab/run_queue_sync.sh <queue_file> [gpu_label]}"
+QUEUE_FILE="${1:?Usage: infra/run_queue_sync.sh <queue_file> [gpu_label]}"
 GPU_LABEL="${2:-local}"
 
 echo "=== Queue Runner (${GPU_LABEL}) ==="
@@ -62,7 +62,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         if [ -f "logs/${NAME}.txt" ]; then
             cp "logs/${NAME}.txt" "results/${NAME}/train.log"
         fi
-        python3 lab/export_experiment_artifacts.py \
+        python3 infra/export_experiment_artifacts.py \
             --run-id "${NAME}" \
             --log-path "logs/${NAME}.txt" \
             --output-dir "results/${NAME}" 2>/dev/null || true
@@ -75,7 +75,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         echo "[${GPU_LABEL}] ${NAME} results committed and pushed"
     else
         echo "[${GPU_LABEL}] ${NAME} FAILED (exit $?)"
-        echo "$(date) | ${GPU_LABEL} | ${NAME} | FAILED" >> lab/failed_experiments.log
+        echo "$(date) | ${GPU_LABEL} | ${NAME} | FAILED" >> logs/failed_experiments.log
     fi
 
     # Unset env vars from this run

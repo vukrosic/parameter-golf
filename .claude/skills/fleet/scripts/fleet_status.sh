@@ -5,7 +5,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-source "$REPO_ROOT/lab/gpu_creds.sh"
+source "$REPO_ROOT/infra/gpu_creds.sh"
 
 SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=5 -o LogLevel=ERROR"
 

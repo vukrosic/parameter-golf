@@ -5,7 +5,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
-source "$REPO_ROOT/lab/gpu_creds.sh"
+source "$REPO_ROOT/infra/gpu_creds.sh"
 
 PORT="$1"
 PASS="$2"

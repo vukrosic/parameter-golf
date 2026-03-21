@@ -39,7 +39,7 @@ fi
 # Start the queue runner
 echo "  Starting queue runner..."
 bash "$FLEET_SCRIPTS/ssh_run.sh" "$PORT" "$PASS" \
-    "nohup bash lab/run_queue.sh lab/$QUEUE_FILE > logs/queue_runner_$(date +%Y%m%d_%H%M).log 2>&1 &"
+    "nohup bash infra/run_queue.sh queues/$QUEUE_FILE > logs/queue_runner_$(date +%Y%m%d_%H%M).log 2>&1 &"
 
 # Verify it started
 sleep 2

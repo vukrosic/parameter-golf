@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run a batch of experiments sequentially.
-# Usage: lab/sweep.sh <sweep_file>
+# Usage: infra/sweep.sh <sweep_file>
 #
 # Sweep file format (one experiment per line):
 #   <name> <steps> <ENV_VAR=value> [ENV_VAR=value ...]
@@ -15,7 +15,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SWEEP_FILE="${1:?Usage: lab/sweep.sh <sweep_file>}"
+SWEEP_FILE="${1:?Usage: infra/sweep.sh <sweep_file>}"
 
 if [ ! -f "$SWEEP_FILE" ]; then
     echo "Error: sweep file not found: $SWEEP_FILE"
@@ -49,7 +49,7 @@ while IFS= read -r line; do
     done
 
     # Run experiment
-    lab/run_experiment.sh "$NAME" "$STEPS"
+    infra/run_experiment.sh "$NAME" "$STEPS"
 
     # Unset env vars to avoid leaking between experiments
     for ((i=2; i<${#parts[@]}; i++)); do
@@ -66,6 +66,6 @@ echo "============================================"
 echo ""
 
 # Show comparison
-python3 lab/analyze.py logs/$(head -1 "$SWEEP_FILE" | awk '{print $1}').txt \
+python3 infra/analyze.py logs/$(head -1 "$SWEEP_FILE" | awk '{print $1}').txt \
     $(grep -vE '^\s*(#|$)' "$SWEEP_FILE" | awk '{print "logs/"$1".txt"}' | tr '\n' ' ') \
-    2>/dev/null || python3 lab/analyze.py
+    2>/dev/null || python3 infra/analyze.py

@@ -31,7 +31,7 @@ if [ -f "$START_FILE" ]; then
     ELAPSED_H=$(python3 -c "print(f'{$ELAPSED_S/3600:.2f}')")
 else
     echo "No session tracking file found at $START_FILE"
-    echo "Cost tracking starts when lab/watch_all_gpus.sh runs."
+    echo "Cost tracking starts when infra/watch_all_gpus.sh runs."
     ELAPSED_S=0
     ELAPSED_H="0.00"
 fi

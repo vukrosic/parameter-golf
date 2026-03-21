@@ -4,9 +4,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-QUEUE_FILE="${1:-lab/queue_ordered.txt}"
+QUEUE_FILE="${1:-queues/active.txt}"
 NUM_GPUS="${2:-8}"
-FAIL_LOG="lab/failed_experiments.log"
+FAIL_LOG="logs/failed_experiments.log"
 LOCK_FILE="/tmp/gpu_scheduler.lock"
 
 echo "===== Worker-pool scheduler started at $(date) ====="
@@ -89,7 +89,7 @@ gpu_worker() {
         local start_time=$(date +%s)
         (
             eval "$env_cmd"
-            bash lab/run_experiment.sh "$name" "$steps"
+            bash infra/run_experiment.sh "$name" "$steps"
         ) > "logs/${name}_gpu${gpu_id}.txt" 2>&1
         local exit_code=$?
         local end_time=$(date +%s)

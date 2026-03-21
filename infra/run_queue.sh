@@ -5,8 +5,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-QUEUE_FILE="${1:-lab/queue_ordered.txt}"
-FAIL_LOG="lab/failed_experiments.log"
+QUEUE_FILE="${1:-queues/active.txt}"
+FAIL_LOG="logs/failed_experiments.log"
 
 echo "===== Queue runner started at $(date) ====="
 echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'unknown')"
@@ -52,7 +52,7 @@ while IFS= read -r line; do
     start_time=$(date +%s)
     (
         eval "$env_cmd"
-        bash lab/run_experiment.sh "$name" "$steps"
+        bash infra/run_experiment.sh "$name" "$steps"
     )
     exit_code=$?
     end_time=$(date +%s)

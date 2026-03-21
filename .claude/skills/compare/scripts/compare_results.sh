@@ -18,13 +18,18 @@ if [ $# -eq 0 ]; then
 import json, os, glob
 
 results = []
-for f in glob.glob('results/*/submission.json'):
+for f in glob.glob('results/*/*/summary.json') + glob.glob('results/*/*/submission.json') + glob.glob('results/*/summary.json') + glob.glob('results/*/submission.json'):
     try:
         d = json.load(open(f))
         name = os.path.basename(os.path.dirname(f))
-        bpb = d.get('val_bpb', d.get('final_val_bpb', None))
-        loss = d.get('val_loss', d.get('final_val_loss', '?'))
-        steps = d.get('steps', d.get('iterations', '?'))
+        # Handle nested format (summary.json has final_quant_eval.val_bpb)
+        if 'final_quant_eval' in d:
+            bpb = d['final_quant_eval'].get('val_bpb')
+            loss = d['final_quant_eval'].get('val_loss', '?')
+        else:
+            bpb = d.get('val_bpb', d.get('final_val_bpb', None))
+            loss = d.get('val_loss', d.get('final_val_loss', '?'))
+        steps = d.get('steps', d.get('iterations', d.get('total_steps', '?')))
         if bpb is not None:
             results.append((float(bpb), name, loss, steps))
     except:

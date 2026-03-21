@@ -3,10 +3,10 @@
 Analyze and compare experiment results from parameter-golf logs.
 
 Usage:
-    python3 lab/analyze.py                          # Show all experiments
-    python3 lab/analyze.py logs/exp1.txt logs/exp2.txt  # Compare specific logs
-    python3 lab/analyze.py --step 500               # Compare val_bpb at step 500
-    python3 lab/analyze.py --plot                    # Plot loss curves (requires matplotlib)
+    python3 infra/analyze.py                          # Show all experiments
+    python3 infra/analyze.py logs/exp1.txt logs/exp2.txt  # Compare specific logs
+    python3 infra/analyze.py --step 500               # Compare val_bpb at step 500
+    python3 infra/analyze.py --plot                    # Plot loss curves (requires matplotlib)
 """
 
 import argparse
@@ -184,8 +184,8 @@ def plot_curves(results: list[dict], metric: str = "val_bpb") -> None:
         ax.axhline(y=1.2244, color="red", linestyle="--", alpha=0.5, label="Baseline (1.2244)")
 
     plt.tight_layout()
-    plt.savefig("lab/comparison.png", dpi=150)
-    print("Saved plot to lab/comparison.png")
+    plt.savefig("research/figures/comparison.png", dpi=150)
+    print("Saved plot to research/figures/comparison.png")
     plt.show()
 
 

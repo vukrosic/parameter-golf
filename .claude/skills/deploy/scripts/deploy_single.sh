@@ -46,7 +46,7 @@ done
 # Start the experiment
 echo "  Starting experiment..."
 bash "$FLEET_SCRIPTS/ssh_run.sh" "$PORT" "$PASS" \
-    "nohup bash -c '$ENV_CMD bash lab/run_experiment.sh $EXP_NAME $STEPS' > logs/${EXP_NAME}.txt 2>&1 &"
+    "nohup bash -c '$ENV_CMD bash infra/run_experiment.sh $EXP_NAME $STEPS' > logs/${EXP_NAME}.txt 2>&1 &"
 
 sleep 2
 CHECK=$(bash "$FLEET_SCRIPTS/ssh_run.sh" "$PORT" "$PASS" "ps aux | grep train_gpt | grep -v grep | head -1" || true)

@@ -16,7 +16,7 @@ All measurements use the default 9-layer / 512-dim / 8-head / 4-KV-head setup wi
 
 | GPU | VRAM | Step avg (ms) | 500 steps | 13,780 steps | Source | Date |
 |-----|------|--------------|-----------|-------------|--------|------|
-| 8xH100 (8 GPUs) | 80GB×8 | ~43 | ~22s | 600s (10 min) | lab/transfer_protocol.md | — |
+| 8xH100 (8 GPUs) | 80GB×8 | ~43 | ~22s | 600s (10 min) | — | — |
 | 1xRTX 5090 (Novita) | 32GB | ~605 | ~5 min | ~2.3 hrs | queue_gpu4.txt runs | 2026-03-21 |
 | 1xL40S (Novita, torch.compile) | 48GB | ~950 | ~8 min | ~3.6 hrs | queue_gpu3.txt runs | 2026-03-21 |
 | 1xL40S (old measurement) | 48GB | ~2,294-2,487 | ~19-21 min | ~8.8-9.5 hrs | monitor_status.log (multiple runs) | 2026-03-19 |

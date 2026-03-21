@@ -20,37 +20,54 @@ Or use the `/setup` skill which does all of this plus smoke test.
 ## Project Structure
 
 ```
-train_gpt.py              # Main training script (CUDA, the competition artifact)
-train_gpt_mlx.py          # Apple Silicon variant
-requirements.txt           # Python dependencies
-data/                      # Dataset download scripts + tokenizers
-  cached_challenge_fineweb.py   # Main data downloader
-results/                   # Git-tracked experiment results (submission.json, config.json)
-records/                   # Official leaderboard submissions
-lab/                       # Experiment orchestration
-  run_experiment.sh        # Run a single experiment with env var overrides
-  run_queue.sh             # Run a queue file of experiments sequentially
-  gpu_creds.sh             # SSH credentials for GPU fleet (GITIGNORED)
-  gpu_scheduler.py         # Daemon: watches queue.txt, assigns jobs to idle GPUs
-  watch_all_gpus.sh        # Fleet monitoring (utilization, temp, cost, progress)
-  gpu_sync_cron.sh         # 2-hourly git sync across all GPUs
-  export_experiment_artifacts.py  # Exports commit-friendly result files
-  experiments/ideas/       # Documented architecture ideas (Tier 1-3)
-  gpu_queues/              # Queue files for different GPU targets
-utils/                     # Monitoring and plotting helpers
-.claude/skills/            # Claude Code skills for GPU orchestration
+train_gpt.py                # THE training script (competition artifact)
+train_gpt_mlx.py            # Apple Silicon variant
+requirements.txt             # Python dependencies
+KNOWLEDGE.md                 # Persistent research memory (proven facts, failed approaches)
+│
+├── data/                    # Dataset download scripts + tokenizers
+├── records/                 # Official leaderboard submissions
+├── utils/                   # Plotting, param checking
+│
+├── infra/                   # GPU orchestration & experiment runners
+│   ├── run_experiment.sh    # Run single experiment with env var overrides
+│   ├── run_queue.sh         # Run queue file of experiments sequentially
+│   ├── gpu_creds.sh         # SSH credentials (GITIGNORED)
+│   ├── gpu_scheduler.py     # Daemon: watches queues/active.txt, assigns to idle GPUs
+│   ├── watch_all_gpus.sh    # Fleet monitoring (utilization, temp, cost, progress)
+│   ├── gpu_sync_cron.sh     # 2-hourly git sync across all GPUs
+│   └── export_experiment_artifacts.py
+│
+├── research/                # All research content
+│   ├── ideas/               # Architecture ideas (Tier 1-3)
+│   ├── papers/              # Literature reviews
+│   ├── findings/            # Experiment analysis documents
+│   └── figures/             # Plots and visualizations
+│
+├── queues/                  # Experiment queue management
+│   ├── active.txt           # THE current queue (what gets run next)
+│   └── archive/             # Completed/old queue files
+│
+├── results/                 # Experiment results (staged by pipeline phase)
+│   ├── explore/             # 500-step screening (cheap, high volume)
+│   ├── validate/            # 2000-5000 step validation (confirm winners)
+│   ├── full/                # 13000+ step full runs (pre-submission)
+│   └── misc/                # One-offs, probes, smoke tests
+│
+├── .claude/skills/          # Claude Code skills for GPU orchestration
+└── logs/                    # Training logs (gitignored)
 ```
 
 ## GPU Fleet Architecture
 
-GPUs are managed via SSH through a proxy host. Credentials live in `lab/gpu_creds.sh` (gitignored) with this pattern:
+GPUs are managed via SSH through a proxy host. Credentials live in `infra/gpu_creds.sh` (gitignored) with this pattern:
 ```bash
 HOST="proxy.host.example"
 GPU_<NAME>_PORT=<port>
 GPU_<NAME>_PASS="<password>"
 ```
 
-Skills auto-discover GPUs by parsing `gpu_creds.sh` — no hardcoded GPU lists.
+Skills auto-discover GPUs by parsing `gpu_creds.sh` via `.claude/skills/fleet/scripts/discover_gpus.sh`.
 
 ### Fleet Operations (Skills)
 
@@ -70,29 +87,39 @@ Skills auto-discover GPUs by parsing `gpu_creds.sh` — no hardcoded GPU lists.
 
 ### Single experiment
 ```bash
-lab/run_experiment.sh <name> <steps>
+infra/run_experiment.sh <name> <steps>
 # With overrides:
-MATRIX_LR=0.08 NUM_LAYERS=12 lab/run_experiment.sh my_test 200
+MATRIX_LR=0.08 NUM_LAYERS=12 infra/run_experiment.sh my_test 200
 ```
 
 ### Queue of experiments
 ```bash
 # Queue file format: <name> <steps> [ENV=val ...]
-bash lab/run_queue.sh lab/queue_ordered.txt
+bash infra/run_queue.sh queues/active.txt
 ```
 
 ### Key env vars for train_gpt.py
 `MATRIX_LR`, `SCALAR_LR`, `EMBED_LR`, `NUM_LAYERS`, `MODEL_DIM`, `NUM_HEADS`, `NUM_KV_HEADS`, `MLP_MULT`, `WARMDOWN_ITERS`, `WARMUP_STEPS`, `LOGIT_SOFTCAP`, `QK_GAIN_INIT`, `ROPE_BASE`, `MUON_MOMENTUM`, `GRAD_CLIP_NORM`, `TIED_EMBED_LR`, `TIED_EMBED_INIT_STD`
 
+## Research Pipeline
+
+| Stage | Steps | Time (L40S) | Purpose | Advance if |
+|-------|------:|-------------|---------|------------|
+| Explore | 500 | ~28 min | Screen many ideas fast | >0.01 BPB improvement |
+| Validate | 2000-5000 | 1.8-4.6 hr | Confirm explore winners | >0.005 BPB on 2+ seeds |
+| Full | 13780 | ~12.7 hr | Pre-submission | Beats 1.2244 BPB |
+
+Results are automatically sorted into `results/explore/`, `results/validate/`, `results/full/` based on step count.
+
 ## Conventions
 
 - **val_bpb** is the only metric that matters for the competition
+- **KNOWLEDGE.md** — Read this first. Contains proven facts, failed approaches, open questions
+- **FORBIDDEN**: LR tuning alone is not research. Focus on architecture/mechanism changes (see `infra/FORBIDDEN.md`)
 - Experiment names use snake_case: `act_leaky05_gradfloor_2000`
-- Results go in `results/<name>/` with `submission.json`, `config.json`, `hparams.json`
-- Queue files live in `lab/` named `queue_*.txt`
+- Queue files go in `queues/`, one active queue at a time
 - The `lab` branch is the working branch; `main` is for PRs upstream
-- Step counts: 50=smoke, 200=screening, 500-1000=validation, 3000-5000=final, 13780=full H100 equivalent
-- Budget: $40 total across all GPUs, tracked in `/cost` skill
+- Budget: $40 total across all GPUs, tracked via `/cost` skill
 
 ## Data
 

@@ -9,20 +9,20 @@
 ## Running an Experiment
 
 Every experiment is a single invocation of `train_gpt.py` (or a fork) with env vars.
-Use `lab/run_experiment.sh` for standardized runs:
+Use `infra/run_experiment.sh` for standardized runs:
 
 ```bash
 # Quick sanity check (50 steps, ~2.5 min on L40S)
-lab/run_experiment.sh my_test_name 50
+infra/run_experiment.sh my_test_name 50
 
 # Medium run (200 steps, ~11 min)
-lab/run_experiment.sh my_test_name 200
+infra/run_experiment.sh my_test_name 200
 
 # Full L40S equivalent of 600s 8xH100 (13780 steps ≈ 12.7 hours)
-lab/run_experiment.sh my_test_name 13780
+infra/run_experiment.sh my_test_name 13780
 
 # With custom env overrides
-MATRIX_LR=0.08 NUM_LAYERS=12 MODEL_DIM=448 lab/run_experiment.sh my_arch_test 200
+MATRIX_LR=0.08 NUM_LAYERS=12 MODEL_DIM=448 infra/run_experiment.sh my_arch_test 200
 ```
 
 Each run exports commit-friendly artifacts:
@@ -36,7 +36,7 @@ Each run exports commit-friendly artifacts:
 Enable the pre-commit size guard once per clone:
 
 ```bash
-lab/install_git_hooks.sh
+infra/install_git_hooks.sh
 ```
 
 This blocks staged files larger than 20MB by default. Override if needed:

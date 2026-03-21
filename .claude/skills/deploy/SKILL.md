@@ -9,7 +9,7 @@ description: Deploy experiments to GPU fleet. Push a queue file or individual ex
 
 ### Deploying a queue file (e.g., `/deploy queue_arch1_weightsharing.txt to ARCH1`)
 
-1. Show the user what's in the queue file (`lab/<filename>`).
+1. Show the user what's in the queue file (`queues/<filename>`).
 2. Check which experiments already have results in `results/<name>/train.log`.
 3. Run the deploy script:
    ```bash

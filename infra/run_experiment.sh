@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Usage: lab/run_experiment.sh <experiment_name> <max_steps> [extra_env...]
+# Usage: infra/run_experiment.sh <experiment_name> <max_steps> [extra_env...]
 #
 # Runs train_gpt.py with standardized settings for 1-GPU development.
 # Results go to results/<experiment_name>/ and logs/<experiment_name>.txt
 #
 # Examples:
-#   lab/run_experiment.sh baseline_check 200
-#   MATRIX_LR=0.08 lab/run_experiment.sh lr_test 500
-#   NUM_LAYERS=12 MODEL_DIM=448 lab/run_experiment.sh arch_12x448 200
+#   infra/run_experiment.sh baseline_check 200
+#   MATRIX_LR=0.08 infra/run_experiment.sh lr_test 500
+#   NUM_LAYERS=12 MODEL_DIM=448 infra/run_experiment.sh arch_12x448 200
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-NAME="${1:?Usage: lab/run_experiment.sh <name> <max_steps>}"
-MAX_STEPS="${2:?Usage: lab/run_experiment.sh <name> <max_steps>}"
+NAME="${1:?Usage: infra/run_experiment.sh <name> <max_steps>}"
+MAX_STEPS="${2:?Usage: infra/run_experiment.sh <name> <max_steps>}"
 
 # Convert steps to approximate wall-clock seconds on L40S (~3.33s/step)
 # Add 15% buffer for validation + overhead
@@ -54,7 +54,7 @@ if [ -f "logs/${NAME}.txt" ]; then
 fi
 
 # Export commit-friendly artifacts for git tracking.
-python3 lab/export_experiment_artifacts.py \
+python3 infra/export_experiment_artifacts.py \
     --run-id "${NAME}" \
     --log-path "logs/${NAME}.txt" \
     --output-dir "results/${NAME}"

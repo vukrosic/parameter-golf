@@ -4,8 +4,8 @@ import time
 import sys
 import threading
 
-# GPU Scheduler that watches lab/queue.txt for new experiments
-# Usage: python3 lab/gpu_scheduler.py
+# GPU Scheduler that watches queues/active.txt for new experiments
+# Usage: python3 infra/gpu_scheduler.py
 
 def get_gpu_status():
     """Returns a list of GPU utilization percentages from nvidia-smi"""
@@ -34,7 +34,7 @@ def run_experiment(gpu_id, name, steps, env):
     
     with open(log_file, "a") as f:
         return subprocess.Popen(
-            ["bash", "lab/run_experiment.sh", name, str(steps)],
+            ["bash", "infra/run_experiment.sh", name, str(steps)],
             env=cmd_env,
             stdout=f, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
@@ -42,8 +42,8 @@ def run_experiment(gpu_id, name, steps, env):
         )
 
 def load_queue():
-    """Reads lab/queue.txt and returns list of (name, steps, env_dict)"""
-    queue_path = "lab/queue.txt"
+    """Reads queues/active.txt and returns list of (name, steps, env_dict)"""
+    queue_path = "queues/active.txt"
     if not os.path.exists(queue_path):
         return []
     
@@ -74,8 +74,8 @@ def load_queue():
     return experiments
 
 def pop_from_queue(name):
-    """Removes the line starting with name from lab/queue.txt"""
-    queue_path = "lab/queue.txt"
+    """Removes the line starting with name from queues/active.txt"""
+    queue_path = "queues/active.txt"
     if not os.path.exists(queue_path):
         return
     with open(queue_path, "r") as f:
@@ -99,7 +99,7 @@ def main():
     
     running_processes = {} # gpu_id -> (Popen object, name)
 
-    print("🛰  Scheduler watching lab/queue.txt (Append experiments there)")
+    print("🛰  Scheduler watching queues/active.txt (Append experiments there)")
     
     # Main loop
     while True:
@@ -113,7 +113,7 @@ def main():
         for gpu_id in finished_gpus:
             del running_processes[gpu_id]
         
-        # Try to assign new experiments from lab/queue.txt
+        # Try to assign new experiments from queues/active.txt
         queue = load_queue()
         if queue:
             for gpu_id in gpu_ids:

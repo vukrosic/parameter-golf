@@ -16,7 +16,7 @@ Show a live snapshot of all GPU instances in the parameter-golf fleet.
 
 2. For richer monitoring with cost tracking and loss curves, run:
    ```bash
-   bash lab/watch_all_gpus.sh
+   bash infra/watch_all_gpus.sh
    ```
    Present the data to the user in a clean table.
 
@@ -35,4 +35,4 @@ Show a live snapshot of all GPU instances in the parameter-golf fleet.
 - `scripts/fleet_status.sh` — Quick fleet overview
 - `scripts/discover_gpus.sh` — List all GPUs from gpu_creds.sh dynamically
 - `scripts/ssh_run.sh` — SSH into any GPU by port/pass
-- `lab/watch_all_gpus.sh` — Full monitoring with cost tracking
+- `infra/watch_all_gpus.sh` — Full monitoring with cost tracking
