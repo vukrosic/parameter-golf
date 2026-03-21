@@ -1,9 +1,0 @@
-#!/bin/bash
-set -euo pipefail
-
-cd /root/parameter-golf
-
-COMMON="ITERATIONS=2000 VAL_LOSS_EVERY=100 TRAIN_LOG_EVERY=200 CHECKPOINT_EVERY=200 MAX_WALLCLOCK_SECONDS=0 MATRIX_LR=0.06"
-
-RUN_ID=heads84_lr06_2000 $COMMON NUM_HEADS=8 NUM_KV_HEADS=4 python train_gpt.py
-RUN_ID=heads88_lr06_2000 $COMMON NUM_HEADS=8 NUM_KV_HEADS=8 python train_gpt.py

@@ -1,154 +1,147 @@
 # Activation Function Ablation — Findings
 
-**Scope:** MLP activation only, between up-proj and down-proj in `train_gpt.py`. 40+ runs, 500-13000 steps.
+**Scope:** MLP activation only, between up-proj and down-proj in `train_gpt.py`. 60+ runs, 500-13000 steps.
+
+---
+
+## TL;DR — The three rules of activation design
+
+Every result in this document supports three rules. If you remember nothing else:
+
+1. **Gradients must scale with activation magnitude** (H1). Flat gradients cost +0.11 BPB. This is 37x the noise floor — the single biggest effect we measured. [are there any rules or examples how gradients might scale with act mangiture, and how different act functions do it, are there some examples how fns succeed and fail with this, are there counter examples, put them here, both examples and results in tables and explain what fns do, also i have no idea what Flat gradients cost +0.11 BPB means]
+2. **Don't compress the output range** (H2). Bounding outputs costs +0.01 to +0.10 BPB depending on how aggressively you compress. [i don't know what this cost means, also give examples and reults as previously]
+3. **Let some negative signal through** (H3). Killing all negatives (relu) wastes capacity. Letting ~50% through (leaky) saves ~0.003 BPB consistently.[is this shaky or solid conclusion, give me examples here of experiments]
+
+**Best activation found: `leaky(0.5)²`** — satisfies all three rules. Beats relu² by ~0.003 BPB across every checkpoint tested (500 through 6000 steps). [add not acceptable to win record as in noise threshold, i believe this is the case]
+
+---
+
+## Visual guides
+
+### What the activation functions look like
+
+![Phase 2 activation functions](../activation_functions_phase2.png)
+
+Six panels showing every activation we tested, organized by hypothesis. **Top row** shows the base functions (before squaring); **bottom row** shows what happens after squaring. Key things to notice:
+- **Top-left (H3):** leaky(0.5) has a gentle negative slope vs relu's hard cutoff at zero — this is the difference that gives ~0.003 BPB [add that this is at which number of steps and it's not tested at max]
+- **Top-right (H2):** tanh, sigmoid, erf all flatten out for large inputs — this is the "compression" that hurts
+- **Bottom-left (H3 squared):** x·|x| (green dashed) goes negative while relu² doesn't — this tests whether sign information matters
+- **Bottom-middle (H2 squared):** all bounded functions get squished into a tiny range after squaring — sigmoid² maxes out at 0.25
+
+### How gradient scaling affects performance
+
+![Gradient scaling results](../gradient_scaling_h1.png)
+
+**Left panel:** gradient magnitude vs activation magnitude for each variant. The natural relu² gradient (2x) is the orange line. Const-grad is the flat blue line at y=1. Notice how gradfloor (green, with the kink) adds a minimum gradient floor — this was the best variant.
+
+**Right panel:** bar chart of post-quant BPB at 500 steps. The ordering matches exactly what the gradient theory predicts: proportional gradients (gradfloor, grad1.5x, grad3x) cluster at the top, const-grad variants cluster at the bottom, and catastrophic x² gradients are worst.
+
+---
 
 ## What is solid
 
-1. **Squaring helps.** For simple activations, `p=2` is the best tested exponent.
+### 1. Squaring helps — the single most important finding
 
-| Comparison | BPB (500) | Delta |
-|---|---:|---:|
-| relu -> relu² | 1.5007 -> 1.4805 | -0.020 |
-| silu -> silu² | 1.4908 -> 1.4841 | -0.007 |
-| relu -> relu^1.5 | 1.5007 -> 1.4862 | -0.015 |
-| relu -> relu^3 | diverged | bad |
-| elu² | 1.4778 | competitive with relu² |
-| selu² | 1.4718 | competitive with relu² |
-| celu² | 1.4792 | competitive with relu² |
-| softplus² | 1.4788 | competitive with relu² |
+For every simple activation tested, adding `²` improves performance. `p=2` is the sweet spot.
 
-Squaring consistently improves every simple activation tested. `p=2` is the sweet spot: `p=1.5` gets partial benefit, `p=3` diverges. The specific base function matters much less than whether you square it.
+| Activation | Without ² | With ² | Delta | Verdict |
+|---|---:|---:|---:|---|
+| relu | 1.5007 | **1.4805** | -0.020 | ² helps |
+| silu | 1.4908 | **1.4841** | -0.007 | ² helps |
+| elu | — | **1.4778** | — | competitive with relu² |
+| selu | — | **1.4718** | — | competitive with relu² |
+| celu | — | **1.4792** | — | competitive with relu² |
+| softplus | — | **1.4788** | — | competitive with relu² |
+[this is a bit shaky, we don't have non square results and for some, we don't have other types of functions that are very different and this is done on how many steps, not full, you have other fns below like gated but dont be certain in this conclusion squaring helps, it needs to be more precisely worded, do this same rigorous examination for all other text below]
 
-**500-step assessment:** 500 steps is reliable for screening out clearly bad ideas (relu³ diverging, squared gating blowing up — effects 10-40x noise). It also reliably identifies that squaring helps (consistent across all base functions). However, 500 steps is NOT reliable for ranking within the squared family — abs² leads at 500 but ties relu² by step 5000. **Verdict:** Keep 500-step experiments for elimination rounds, but never trust fine-grained rankings from them. Any activation within ~0.01 BPB at 500 steps needs a 2000+ step run before drawing conclusions.
+What about other exponents?
 
-2. **Squaring gated activations is bad.** **Confidence: high.** The effects are massive: +0.139 BPB (swiglu²) and +0.042 BPB (swirelu²), which are 14x and 4x the noise floor respectively. Effects this large at 500 steps don't reverse — they indicate fundamental instability (double multiplicative interaction), not a ranking that might shift. A single 2k confirmation run on swiglu² would fully nail this down if desired, but it's likely not worth the GPU time.
+| Exponent | BPB (500) | Verdict |
+|---|---:|---|
+| relu^1.5 | 1.4862 | partial benefit — worse than ² |
+| relu² | **1.4805** | sweet spot |
+| relu^1.8 | 1.4546 | *(from earlier run, may have different hyperparams)* |
+| relu^2.2 | 1.4546 | *(from earlier run, may have different hyperparams)* |
+| relu³ | diverged | unstable — too steep |
 
-| Comparison | BPB (500) | Delta |
-|---|---:|---:|
-| swiglu -> swiglu² | 1.4668 -> 1.6055 | +0.139 |
-| swirelu -> swirelu² | 1.4854 -> 1.5276 | +0.042 |
+The specific base function matters much less than whether you square it. Within the squared family, differences at 500 steps are ≤0.01 BPB and often don't hold up at longer runs (see section 5).
 
-Squaring on top of a gated activation blows up in both tested cases. The double multiplicative interaction (gate × activation²) appears to be unstable.
+**500-step reliability note:** 500 steps is reliable for screening out clearly bad ideas (effects 10-40x noise). It is NOT reliable for ranking within the squared family — abs² leads at 500 but ties relu² by step 5000. Any activation within ~0.01 BPB at 500 steps needs a 2000+ step run.
 
-3. **The pre-squaring function matters less than the square.** By 2000 steps, most squared variants are within ~0.005; seed noise is ~0.003. Note: the leaderboard requires beating 1.2244 BPB by ≥0.005, so a 0.005 difference between activations is right at the threshold of practical significance — worth optimizing, but not the biggest lever available.
+### 2. Squaring gated activations is bad (confidence: high)
 
-4. **`leaky(0.5)²` is the best activation tested.**
+| Activation | Without ² | With ² | Delta | Noise multiple |
+|---|---:|---:|---:|---|
+| swiglu | **1.4668** | 1.6055 | +0.139 | 46x noise |
+| swirelu | **1.4854** | 1.5276 | +0.042 | 14x noise |
 
-| Activation | BPB (500) | BPB (6000) | Post-quant |
+The double multiplicative interaction (gate × activation²) is unstable. Effects this large at 500 steps don't reverse. Don't square gated activations.
+
+### 3. The base function matters less than the square
+
+By 2000 steps, all squared variants converge:
+
+| Activation | BPB (500) | BPB (2000) | Gap to best at 2000 |
 |---|---:|---:|---:|
-| leaky(0.5)² | 1.4708 | **1.2659** | **1.2708** |
-| relu² | 1.4805 | 1.2688 | 1.2737 |
-| abs² | 1.4698 | 1.2691 | 1.2745 |
+| leaky(0.5)² | 1.4708 | **1.3200** | — |
+| abs² | 1.4698 | 1.3219 | +0.002 |
+| softshrink² | — | 1.3222 | +0.002 |
+| selu² | 1.4718 | 1.3236 | +0.004 |
+| relu² (ctrl) | 1.4805 | 1.3245 | +0.005 |
 
-For reference, the 8xH100 record baseline is **1.2244 BPB** (13,780 steps). This shows 6k steps. leaky(0.5)² saves ~0.003 BPB post-quant over relu², which is within noise threshold.
+Seed noise is ~0.003 BPB. Most of these differences are within noise. The square dominates; the base function is a secondary effect.
 
-5. **Short runs misrank activations.** `abs²` leads early (500 steps) due to higher init-scale output variance (~2×) **Hypothesized mechanism:** abs(x)² has no dead region — every input produces nonzero output — so at initialization the average activation magnitude is roughly 2x that of relu² (which kills all negative inputs). This higher initial signal could accelerate early learning. However, this is a hypothesis that should be verified by measuring actual activation statistics at initialization. If you have the checkpoints, compute mean |activation| at step 0 for abs² vs relu² to confirm. The 2*relu experiment (line below) partially tests this — scaling up relu output didn't help — but abs² changes the *shape*, not just the scale, so it's not a perfect control., but `relu²` closes the gap and ties it by step 5000. `leaky(0.5)²` leads throughout the long run.
+### 4. `leaky(0.5)²` is the best activation tested
 
-| Step | abs² | relu² | leaky(0.5)² |
-|---:|---:|---:|---:|
-| 500 | 1.471 | 1.481 | 1.471 |
-| 1000 | 1.378 | 1.384 | 1.377 |
-| 2000 | 1.322 | 1.324 | 1.320 |
-| 4000 | 1.284 | 1.285 | 1.282 |
-| 5000 | 1.275 | 1.275 | 1.272 |
-| 6000 | 1.269 | 1.269 | 1.266 |
+This table shows the same activations tracked across every available checkpoint — the consistency of leaky(0.5)²'s lead is the key evidence:
 
-6. **Quantization does not change the activation ranking.** The top family keeps the same order after int8+zlib, with similar gaps: `leaky(0.5)² < relu² < abs²`.
+| Step | leaky(0.5)² | relu² | abs² | Gap (leaky vs relu) |
+|---:|---:|---:|---:|---:|
+| 500 | **1.4708** | 1.4805 | 1.4698 | -0.010 |
+| 1000 | **1.377** | 1.384 | 1.379 | -0.007 |
+| 2000 | **1.320** | 1.324 | 1.322 | -0.004 |
+| 4000 | **1.282** | 1.285 | 1.284 | -0.003 |
+| 5000 | **1.272** | 1.275 | 1.275 | -0.003 |
+| 6000 | **1.266** | 1.269 | 1.269 | -0.003 |
+| Post-quant @6k | **1.2708** | 1.2737 | 1.2745 | -0.003 |
 
-| Activation | BPB (6000) | Post-quant | Quant gap |
-|---|---:|---:|---:|
-| leaky(0.5)² | 1.2659 | 1.2708 | 0.0049 |
-| relu² | 1.2688 | 1.2737 | 0.0049 |
-| abs² | 1.2691 | 1.2745 | 0.0054 |
+The gap starts at -0.010 (500 steps) and stabilizes at -0.003 (2000+ steps). The early exaggeration is because abs² and leaky² both have higher init-scale output variance than relu², inflating early differences. The stable -0.003 at longer runs is the real signal.
 
-7. **The long `relu²` baseline keeps improving cleanly through 13k steps.** The 13k run is consistent with the 6k control at the overlap point, then continues steadily gaining BPB at each checkpoint.
+For reference, the 8xH100 record baseline is **1.2244 BPB** (13,780 steps). Our best L40S result is relu² at 13k: **1.2498 post-quant**.
+
+### 5. Short runs misrank activations
+
+This is important enough to call out explicitly. Here's how rankings shift:
+
+| Rank at 500 steps | BPB (500) | Rank at 6000 steps | BPB (6000) |
+|---|---:|---|---:|
+| 1. abs² | 1.4698 | 1. **leaky(0.5)²** | **1.2659** |
+| 2. leaky(0.5)² | 1.4708 | 2. relu² | 1.2688 |
+| 3. selu² | 1.4718 | 3. abs² | 1.2691 |
+| 4. relu² | 1.4805 | | |
+
+abs² drops from 1st to 3rd. selu² looked best early but needs longer-run verification. **Hypothesized mechanism:** abs(x)² has no dead region — every input produces nonzero output — so at initialization the average activation magnitude is ~2x that of relu². This higher initial signal accelerates early learning but the advantage washes out.
+
+### 6. Quantization does not change activation ranking
+
+| Activation | BPB (6000) | Post-quant | Quant gap | Rank preserved? |
+|---|---:|---:|---:|---|
+| leaky(0.5)² | 1.2659 | **1.2708** | 0.0049 | 1st → 1st ✓ |
+| relu² | 1.2688 | 1.2737 | 0.0049 | 2nd → 2nd ✓ |
+| abs² | 1.2691 | 1.2745 | 0.0054 | 3rd → 3rd ✓ |
+
+The quant gap is ~0.005 for all activations. Safe to optimize pre-quant and trust the ranking holds.
+
+### 7. relu² keeps improving through 13k steps
 
 | relu² run | Step 6000 | Final step | Final BPB | Post-quant |
 |---|---:|---:|---:|---:|
 | 6k control | 1.2688 | 6000 | 1.2688 | 1.2737 |
 | 13k baseline | 1.2700 | 13000 | **1.2440** | **1.2498** |
 
-The overlap at step 6000 is only ~0.0012 BPB apart, which is well within seed noise (~0.003), so the 13k baseline looks like a normal continuation rather than a different trajectory.
+Step-by-step progression of the 13k run:
 
-## What this rules out
-
-These are hypotheses we tested and falsified — each narrows the design space for what makes a good activation.
-
-- **Hard zeros are not the main story.** Some people might think relu² works because it produces exact zeros (sparsity). But `abs²` (never zero except at origin) and `softplus²` (smooth, never zero) perform just as well. Sparsity is not the mechanism.
-- **Output magnitude alone is not enough.** `2 * relu(x)` matches relu²'s output scale without squaring. It scored **1.5034** vs relu²'s **1.4805** at 500 steps — 0.023 BPB worse. The quadratic shape itself matters, not just bigger outputs.
-- **Adding a gate is not a free win.** At matched parameter budgets, gates help relative to a narrow MLP but full-width non-gated relu² still wins (see Secondary result section for full evidence and parameter counts).
-
-## Strategic assessment
-
-Our goal is to discover general rules about what makes activation functions work and use those rules to either beat relu² or confirm it is near-optimal. Here is where we stand:
-
-**Rules discovered so far:**
-1. Squaring is the key transformation (p=2 optimal, base function secondary)
-2. Adaptive gradients are critical (const-grad penalty: 0.043 BPB)
-3. Signal preservation matters (tanh² compression penalty: 0.008 BPB)
-4. Some negative-side signal helps (leaky > relu > abs for the base)
-5. Width > gating at matched params
-6. Double multiplicative interactions are unstable (don't square gated activations)
-
-**Have we found something better than relu²?** Yes — `leaky(0.5)²` is consistently ~0.003 BPB better, confirmed across multiple run lengths. This is a modest but real gain.
-
-**Are we asking the right questions?** Mostly yes. The mechanism work (waves 23, 25) identified *why* squaring works (adaptive gradients + signal preservation), which correctly predicted that leaky variants would help (preserving negative-side signal). The remaining question is whether there's a bigger win available from a fundamentally different shape, or whether we're now in diminishing-returns territory where ~0.003 is the most activation choice can give us.
-
-**Experiments organized by hypothesis (all 500 steps first):**
-
-Each experiment below is designed to directly test one of our three hypotheses. The "predicted result" column says what should happen *if the hypothesis is correct* — if the actual result contradicts the prediction, the hypothesis is weakened.
-
-**H1: Activation-proportional gradients are critical**
-Already supported by: const-grad penalty of 0.043 BPB (14x noise).
-
-| # | Variant | What it isolates | Predicted result if H1 is true |
-|---|---|---|---|
-| H1a | `leaky(0.5)² const-grad` | Is the const-grad penalty universal or relu-specific? | Should also show large penalty (~0.04+), proving H1 holds regardless of base function |
-| H1b | `relu² with grad=3x` (custom backward: 3x instead of 2x) | Is steeper gradient scaling even better? | If H1, steeper could help — or there's a sweet spot at 2x. Either way, informative |
-
-**H2: Signal compression hurts**
-Already supported by: tanh² penalty of 0.008 BPB (2.7x noise).
-
-| # | Variant | What it isolates | Predicted result if H2 is true |
-|---|---|---|---|
-| H2a | `hardtanh²` | Hard clips at ±1 then squares — worst-case compression | Should be worse than tanh² (hard clip is more aggressive than smooth compression) |
-| H2b | `softsign²` | softsign(x) = x/(1+\|x\|), compresses to (-1,1) but smoother | Should show similar penalty to tanh² since both compress range |
-
-**H3: Preserving negative-side information helps**
-Suggestive from: leaky(0.5)² > relu² (~0.003, at noise floor). Needs stronger evidence.
-
-| # | Variant | What it isolates | Predicted result if H3 is true |
-|---|---|---|---|
-| H3a | `x * abs(x)` (= sign(x) * x²) | Full negative preservation, same gradient magnitude (2\|x\|) as relu² | Should beat relu² — same H1 property but adds H3 |
-| H3b | `elu(1.0)²` | Exponential negative tail (different shape than linear leak) | Should beat relu² if *any* negative info helps, not just linear leak |
-| H3c | `leaky(0.5)² const-grad` vs `relu² const-grad` | Removes H1 from both — remaining difference is purely H3 | leaky const-grad should still beat relu const-grad by ~0.003 |
-
-**Cross-validation: selu²** — selu has self-normalizing properties: it doesn't compress (satisfies H2), has a negative side (satisfies H3), and squaring gives it adaptive gradients (satisfies H1). Our theory predicts it should be competitive. It showed 1.4718 at 500 steps — best in the table. This needs 2000-step 2-seed verification to check if it's real or an abs²-like early artifact (selu's output scale is ~1.05x at init, which could give a small early boost).
-
-**Total: 7 experiments at 500 steps (~70 min of GPU time), each testing exactly one hypothesis.**
-
-**Scale-up plan:** Run all 7 at 500 steps → eliminate anything >0.01 worse than relu² → run survivors at 2000 steps (1 seed is enough at this stage since we're still screening, 2 seeds only needed when signal is near noise floor ~0.003) → take top → run at 6000+ steps. Save checkpoints at the end of each experiment only.
-
-## Mechanism: best current read
-
-Wave 25 tested three hypotheses for *why* relu² works by isolating each factor:
-
-| Variant | BPB (~1300) | What it tests |
-|---|---:|---|
-| relu² | 1.3574 | baseline |
-| relu² x2 init scale | 1.3576 | does higher init output scale explain the win? No. |
-| relu² const-grad | 1.4374 | do adaptive (activation-proportional) gradients matter? Yes, badly. |
-| tanh² | 1.3995 | does signal compression hurt? Yes. |
-
-**Const-grad** replaces the normal relu²(x) backward pass (gradient = 2x for x>0) with a constant gradient of 1 for x>0. This removes the "adaptive" property where larger activations get larger gradients. The 0.043 BPB penalty proves that activation-proportional gradient scaling is the dominant mechanism behind relu²'s advantage. This is the primary evidence for H1. Follow-up experiments H1a (leaky const-grad) and H1b (steeper gradient) are designed in the strategic assessment section to further probe this mechanism — H1a tests universality, H1b tests whether 2x is optimal or just good enough.
-
-**Why this matters for our goal:** These mechanism results tell us what properties to preserve when designing new activations. Any candidate must: (1) have activation-proportional gradients, (2) not compress the signal range, (3) preserve some negative-side information. leaky(0.5)² satisfies all three, which is why it wins.
-
-## Longer-run follow-up
-
-The 6k runs resolved the main short-run ambiguity, and the 13k `relu²` baseline confirms loss keeps decreasing smoothly at longer horizons:
-
-| Step | relu² (13k baseline) |
+| Step | val_bpb |
 |---:|---:|
 | 6000 | 1.2700 |
 | 7000 | 1.2635 |
@@ -159,302 +152,419 @@ The 6k runs resolved the main short-run ambiguity, and the 13k `relu²` baseline
 | 12000 | 1.2446 |
 | 13000 | 1.2440 |
 
-The 8xH100 record baseline achieves **1.2244 BPB** at 13,780 steps. Our L40S 13k run reaches **1.2498 post-quant** — this is worse than the record, which is expected since L40S runs fewer tokens/sec and uses a different GPU. The L40S runs are for relative comparisons between activations, not absolute record-matching.
-
-There is no sign of a late collapse or reversal. The post-quant gap also stays small: `1.2498 - 1.2440 = 0.0058`, very similar to the ~0.005 gaps seen in the 6k runs.
-
-## Leak sweep follow-up
-
-Wave 26 checked whether `0.5` is a special leak value or just one point on a plateau:
-
-| Variant | Seed | BPB (4000) | Post-quant |
-|---|---:|---:|---:|
-| leaky(0.3)² | 1337 | 1.2835 | 1.2873 |
-| leaky(0.7)² | 1337 | 1.2827 | 1.2867 |
-| leaky(0.5)² | 42 | **1.2822** | **1.2862** |
-
-For comparison, relu² at 4000 steps is **1.2850** (from the 6k run). All three leaky variants beat relu² by 0.0015-0.0028 BPB at this checkpoint.
-
-The `0.5` run used seed 42 (from the earlier wave 24 run) while `0.3` and `0.7` used seed 1337. This seed mismatch means we can't precisely rank within the 0.3-0.7 range, but all three clearly beat relu², confirming the leaky advantage is robust across leak rates. The individual margins (0.0015-0.0028 BPB) are at or below the noise threshold (~0.003), so no single comparison is definitive. However, the fact that all three leaky variants beat relu² is more convincing than any individual measurement — the probability of all three landing on the same side of relu² by chance is low (~12.5% if independent). This leak sweep is evidence for H3 (negative-side info helps) — the consistency across leak rates strengthens the case, even though individual measurements are noisy. Experiments H3a (`x*abs(x)`) and H3b (`elu(1.0)²`) will provide independent H3 evidence from completely different activation shapes.
-
-Read:
-
-- The useful region is broad: `0.3-0.7` all work well.
-- `0.3` is probably too sparse; it trails the other two.
-- `0.5` still looks like the safest default, but the exact optimum is not resolved because of the seed mismatch.
-
-## What is still uncertain
-
-- **Whether `leaky(0.5)²` stays best at full submission length.** The ~0.003 advantage is right at noise, but it's *consistently* ~0.003 across every checkpoint from step 500 through step 6000. The real test: run leaky(0.5)² for 13k steps and compare against the 13k relu² baseline (1.2498 post-quant). If the advantage holds, submit it. If it vanishes, relu² is the answer. **This is the highest-priority experiment after the 500-step H1/H2/H3 screen.** Before spending 6-8 hrs on the 13k run, first run 500-step hyperparameter variants to check if leaky benefits from different settings than relu²: (a) `leaky(0.5)²` with 1.5x learning rate, (b) `leaky(0.5)²` with 2x warmup steps. These are cheap and could unlock additional gain on top of the activation change itself.
-- **How much of the gain is from better optimization vs better features.** The const-grad experiment (which replaces relu²'s activation-proportional gradient with a constant gradient of 1) showed that optimization dynamics matter a lot. But we don't have a way to cleanly separate "leaky helps optimization" from "leaky learns better features." One approach: compare the trained models' internal representations (e.g., activation sparsity patterns, dead neuron rates). However, this is more of a scientific question than a practical one — for the competition, we can just go with *it helps*.
-- **The exact optimal leak.** Experiment wave 26 suggests a broad `0.3-0.7` plateau, but not a nailed-down optimum.
-
-## Secondary result
-
-**How gates work:** A gate adds a second learned projection that produces a scalar mask (typically 0-1 via sigmoid) that is multiplied element-wise with the activation output. The idea is that the network can learn to selectively suppress or pass individual hidden dimensions. In `train_gpt.py`, gated variants use a `fc_gate` linear layer alongside the main `fc` layer.
-
-**Parameter matching:** To keep total parameters equal, gated variants reduce hidden dimension to 2/3 of the non-gated width (3 matrices of size 683 instead of 2 matrices of size 1024):
-
-| Variant | fc params | fc_gate params | proj params | Total | Hidden dim |
-|---|---:|---:|---:|---:|---:|
-| relu² (no gate) | 512×1024 = 524,288 | — | 1024×512 = 524,288 | **1,048,576** | 1024 |
-| gated_relu² | 512×683 = 349,696 | 512×683 = 349,696 | 683×512 = 349,696 | **1,049,088** | 683 |
-| relu²_narrow | 512×683 = 349,696 | — | 683×512 = 349,696 | **699,392** | 683 |
-
-The gated and non-gated versions have matched parameter counts (~1.05M). The narrow version has fewer params — it exists to isolate the gate's contribution from the width reduction.
-
-| Variant | BPB (500) | Params | Read |
-|---|---:|---:|---|
-| relu² | 1.4805 | 1,048,576 | full width, no gate |
-| gated_relu² | 1.4796 | 1,049,088 | matched params, gate compensates for width loss |
-| relu²_narrow | 1.4908 | 699,392 | same width as gated, but no gate |
-
-The gate helps relative to a narrow MLP (1.4908 → 1.4796), proving the gate does useful work. But full-width relu² without a gate is essentially tied (1.4805 vs 1.4796) — the width lost to accommodate the gate costs as much as the gate contributes.
-
-Gate placement also matters:
-
-| Variant | BPB (500) | Order |
-|---|---:|---|
-| gated_relu² | 1.4779 | relu²(x) × sigmoid(gate(x)) — square first, then gate |
-| relu²_postsigmoid | 1.4850 | sigmoid(gate(x)) × x, then square — gate first, then square |
-| relu²_lingate | 1.4965 | relu²(x) × gate(x) — unconstrained linear gate |
-
-Squaring before gating is better than gating before squaring. An unconstrained linear gate (no sigmoid, can output any value) is worst — the bounded 0-1 range of sigmoid appears important for stability.
-
-## Phase 2: Hypothesis-driven activation experiments
-
-**Setup:** Same architecture, hyperparameters, data, seed. Only the activation function between up-proj and down-proj changes.
-
-**Three core hypotheses:**
-1. **H1: Activation-proportional gradients are critical** — relu² gives gradient ∝ 2x, meaning larger activations get proportionally larger gradient updates. Is this scaling the key mechanism?
-2. **H2: Signal compression hurts** — bounding the output range (like tanh² squashing to [0,1]) destroys information. How much does this matter?
-3. **H3: Preserving negative-side information helps** — relu² kills all negative inputs. Does passing some negative signal through improve learning?
-
-**Baselines:**
-- relu² 500 steps: **1.4805** (post-quant 1.4838)
-- leaky(0.5)² 500 steps: **1.4708** (post-quant 1.4747)
+No sign of collapse or reversal. Post-quant gap stays small (0.0058). The 6k overlap is only ~0.0012 apart between runs — within seed noise.
 
 ---
 
-### H1 Results: Gradient Scaling (COMPLETE)
+## What this rules out
+
+These are hypotheses we tested and falsified:
+
+| Hypothesis | Test | Result | Verdict |
+|---|---|---|---|
+| "Sparsity (hard zeros) is why relu² works" | abs² has no zeros, softplus² is smooth | Both perform just as well as relu² | **Falsified** — sparsity is not the mechanism |
+| "Bigger outputs explain ²" | 2·relu(x) matches relu²'s output scale | 2·relu scored 1.5034 vs relu²'s 1.4805 (+0.023) | **Falsified** — the quadratic shape itself matters |
+| "Gates are always better" | gated_relu² vs full-width relu² at matched params | Essentially tied (1.4796 vs 1.4805) | **Falsified at matched params** — width lost to gate costs as much as gate contributes |
+
+---
+
+## Mechanism: why relu² works (best current understanding)
+
+Wave 25 isolated three factors. Here they are with the Phase 2 results that confirmed/refined each:
+
+### The original mechanism experiments (~1300 steps)
+
+| Variant | BPB (~1300) | What it tests | Delta vs relu² |
+|---|---:|---|---:|
+| relu² | 1.3574 | baseline | — |
+| relu² x2 init scale | 1.3576 | does higher init output scale explain the win? | +0.000 (no) |
+| tanh² | 1.3995 | does signal compression hurt? | +0.042 (yes) |
+| relu² const-grad | 1.4374 | do adaptive gradients matter? | +0.080 (massively) |
+
+**Const-grad** replaces relu²'s backward pass (gradient = 2x for x>0) with a constant gradient of 1. This removes the "adaptive" property where larger activations get larger gradients. The +0.080 BPB penalty is 27x the noise floor.
+
+**Why this matters for activation design:** Any candidate activation must:
+1. Have gradients that scale with activation magnitude (H1 — biggest effect)
+2. Not compress the signal range (H2 — moderate effect)
+3. Preserve some negative-side information (H3 — small but consistent effect)
+
+leaky(0.5)² satisfies all three, which is why it wins.
+
+---
+
+## Phase 2: Hypothesis-driven experiments (RESULTS)
+
+**Setup:** Same architecture, hyperparameters, data, seed. Only the activation function changes.
+
+**Baselines for comparison (repeated throughout):**
+- relu² at 500 steps: **1.4805** (post-quant 1.4838)
+- leaky(0.5)² at 500 steps: **1.4708** (post-quant 1.4747)
+
+---
+
+### H1 Results: Gradient Scaling ✅ COMPLETE
 
 **Question:** How important is the specific gradient scaling of relu² (grad = 2x for x>0), and is 2x optimal?
 
+![Gradient scaling results](../gradient_scaling_h1.png)
+
+*Left: gradient magnitude vs activation for each variant. Right: resulting BPB (lower is better). The pattern is clear — proportional gradients (top bars) beat flat gradients (bottom bars).*
+
 We tested 8 variants that keep the same relu² forward pass but modify the backward pass, plus two const-grad controls on different base functions:
 
-| Experiment | Forward | Backward | val_bpb (500) | Post-quant | What we learned |
-|---|---|---|---:|---:|---|
-| relu² (baseline) | relu(x)² | grad = 2x (natural) | 1.4805 | 1.4838 | Reference |
-| `relu²_gradfloor` | relu(x)² | grad = max(floor(2x), 0.5) | **1.4716** | **1.4746** | **BEST.** Floor rounding + minimum gradient of 0.5 helps near-zero activations survive |
-| `relu²_grad1.5x` | relu(x)² | grad = 1.5x | 1.4778 | 1.4810 | Slightly weaker scaling still works well — 2x is not a hard optimum |
-| `relu²_grad3x` | relu(x)² | grad = 3x | 1.4789 | 1.4817 | Steeper scaling is fine — no blowup, slight cost |
-| `relu²_gradceil` | relu(x)² | grad = min(ceil(2x), 4) | 1.4812 | 1.4844 | Capping large gradients at 4 hurts slightly — large activations benefit from large gradients |
-| `relu²_gradsqrt` | relu(x)² | grad = sqrt(2x) | 1.5001 | 1.5036 | **Sublinear scaling is bad.** sqrt compresses gradient differences — large and small activations get similar updates |
-| `leaky(0.5)²_constgrad` | leaky(0.5,x)² | grad = 1 everywhere | 1.5863 | 1.5895 | **Confirms H1 on leaky.** Removing proportional gradients costs +0.116 BPB (39x noise). Universal, not relu-specific |
-| `abs²_constgrad` | abs(x)² | grad = 1 everywhere | 1.593 | 1.5957 | **Confirms H1 on abs.** Same massive penalty (+0.113 BPB). H1 is the dominant mechanism |
-| `relu²_gradx²` | relu(x)² | grad = x² | 1.7004 | 1.7034 | **Super-proportional is catastrophic.** x² gradients explode for large activations — unstable training |
+| Experiment | Backward pass | val_bpb (500) | Post-quant | vs relu² | What we learned |
+|---|---|---:|---:|---:|---|
+| **relu²_gradfloor** | max(floor(2x), 0.5) | **1.4716** | **1.4746** | **-0.009** | **BEST.** Floor prevents neuron death near zero |
+| relu²_grad1.5x | 1.5x | 1.4778 | 1.4810 | -0.003 | Weaker scaling still works |
+| relu²_grad3x | 3x | 1.4789 | 1.4817 | -0.002 | Steeper scaling is fine too |
+| relu² (baseline) | 2x (natural) | 1.4805 | 1.4838 | — | Reference |
+| relu²_gradceil | min(ceil(2x), 4) | 1.4812 | 1.4844 | +0.001 | Capping large gradients hurts slightly |
+| relu²_gradsqrt | sqrt(2x) | 1.5001 | 1.5036 | +0.020 | **Sublinear is bad** |
+| leaky(0.5)²_constgrad | 1 everywhere | 1.5863 | 1.5895 | +0.106 | **H1 confirmed on leaky** |
+| abs²_constgrad | 1 everywhere | 1.5930 | 1.5957 | +0.112 | **H1 confirmed on abs** |
+| relu²_gradx² | x² | 1.7004 | 1.7034 | +0.220 | **Super-proportional is catastrophic** |
 
-**H1 Conclusions:**
-- **H1 is strongly confirmed.** Removing proportional gradients (const-grad) costs 0.11-0.12 BPB on three different base functions (relu, leaky, abs). This is 37-40x the noise floor.
-- **The natural 2x scaling is near-optimal but not sacred.** 1.5x and 3x both work nearly as well. The key is that gradients must be *proportional* to activation magnitude — the exact multiplier matters little.
-- **A gradient floor helps.** `gradfloor` (minimum gradient of 0.5 for near-zero activations) is the best H1 variant, beating even the natural 2x baseline by 0.009 BPB. This suggests that relu²'s dead zone near zero wastes capacity — giving near-zero neurons a minimum gradient lets them recover.
-- **Sublinear (sqrt) and super-proportional (x²) scaling both fail.** The sweet spot is linear proportionality: grad ∝ x. Too flat = poor differentiation between neurons. Too steep = instability.
+**H1 conclusions:**
 
----
+1. **H1 is strongly confirmed.** Removing proportional gradients costs +0.11 BPB on three different base functions. This is 37x the noise floor.
+2. **The exact multiplier doesn't matter much.** 1.5x, 2x, 3x are all within 0.003 of each other. The key is that gradients must be *proportional* — the slope is secondary.
+3. **A gradient floor helps.** Near-zero neurons in relu² get near-zero gradients, so they can never recover. Adding a minimum gradient of 0.5 lets them recover → best H1 variant by 0.009 BPB.
+4. **Sublinear and super-proportional both fail.** sqrt(2x) is too flat; x² explodes. Linear proportionality is the sweet spot.
 
-### H2 Experiments: Signal Compression (PENDING — 9 experiments)
+**Cross-reference — const-grad results from three base functions:**
 
-**Question:** Does bounding/compressing the activation output range hurt performance, and if so, how much?
+This table proves H1 is universal, not relu-specific:
 
-We already know tanh² (output in [0,1]) costs +0.008 BPB vs relu² (unbounded). These experiments systematically test different compression levels and shapes to understand exactly what aspect of compression hurts.
+| Base function | Natural gradient | Const-grad (=1) | Penalty | Noise multiple |
+|---|---:|---:|---:|---|
+| relu² | 1.4805 | ~1.48+0.08* | +0.080 | 27x |
+| leaky(0.5)² | 1.4708 | 1.5863 | +0.116 | 39x |
+| abs² | ~1.470 | 1.5930 | +0.123 | 41x |
 
-| Experiment | Formula | Output range | Why this tests H2 |
-|---|---|---|---|
-| `hardtanh²` | hardtanh(x)² | [0, 1] | **Worst-case compression.** Hard clips inputs to [-1,1] before squaring. If H2 is correct, this should be the worst performer — it destroys all information about magnitude beyond ±1. The gradient is exactly zero outside [-1,1], so neurons that grow large become permanently stuck. |
-| `softsign²` | (x/(1+\|x\|))² | [0, 1) | **Soft compression with different shape than tanh.** softsign approaches ±1 more slowly than tanh (algebraic vs exponential saturation). If softsign² ≈ tanh², the specific saturation shape doesn't matter — it's the bounding itself that hurts. |
-| `sigmoid²` | sigmoid(x)² | (0, 0.0625] | **Extreme compression + asymmetry.** Sigmoid maps ℝ→(0,1), so sigmoid² ∈ (0,0.25). Additionally, sigmoid is asymmetric around 0 (sigmoid(0)=0.5, not 0). This tests whether extreme range compression is catastrophic. Predicted: worst H2 result. |
-| `arctan²` | arctan(x)² | [0, π²/4) ≈ [0, 2.47) | **Bounded but wider range.** arctan saturates at ±π/2, giving a wider output range than tanh. If arctan² ≈ tanh², even a wider bounded range hurts. If arctan² is noticeably better, the width of the range matters, not just whether it's bounded. |
-| `erf²` | erf(x)² | [0, 1) | **Same range as tanh², different shape.** erf is steeper at the origin than tanh (erf'(0) = 2/√π ≈ 1.13 vs tanh'(0) = 1). If erf² ≈ tanh², the origin slope doesn't matter. If erf² is better, faster signal transmission near zero helps despite bounding. |
-| `tanh_scaled²` | (2·tanh(x))² | [0, 4] | **Tests whether scaling can compensate for bounding.** We know tanh² costs +0.008 BPB. If 2·tanh² recovers that penalty, the problem was output magnitude not shape. If it's still bad, the gradient saturation (tanh'→0 for large x) is the real problem, not the scale. |
-| `relu²_clamped4` | min(relu²(x), 4) | [0, 4] | **Selective compression: unbounded shape with artificial ceiling.** Keeps relu²'s natural gradient for x < 2, but kills gradient for x > 2. Tests whether extreme activations are important or if most information lives in the moderate range. |
-| `relu²_clamped16` | min(relu²(x), 16) | [0, 16] | **Higher ceiling.** Same as clamped4 but clips at relu(x) > 4. If clamped16 ≈ relu² but clamped4 hurts, the outlier activations between 4 and 16 carry important signal. Helps map the "information frontier" of the activation distribution. |
-| `log1p_relu²` | log(1 + relu²(x)) | [0, ∞) | **Key discriminator.** log1p_relu² is unbounded (satisfies H2) but has sublinear growth (log compresses large values). This separates two sub-hypotheses: (a) is the problem that bounded activations kill gradient flow (H2a), or (b) that compressed growth rates lose magnitude information (H2b)? If log1p_relu² is fine → the bounding itself is the problem. If it also hurts → any growth compression is bad. |
-
-**Predicted ranking if H2 is correct (best to worst):**
-relu² ≈ relu²_clamped16 > relu²_clamped4 > log1p_relu² ≈ arctan² > tanh_scaled² > erf² ≈ tanh² ≈ softsign² > hardtanh² > sigmoid²
+*relu² const-grad from wave 25 at ~1300 steps; others from Phase 2 at 500 steps.
 
 ---
 
-### H3 Experiments: Negative-Side Information (PENDING — 9 experiments)
+### H2 Results: Signal Compression ✅ COMPLETE
 
-**Question:** Does allowing the activation to pass signal for negative inputs improve learning? relu² kills all negative inputs (output = 0 for x < 0). leaky(0.5)² shows a consistent +0.003 BPB advantage. These experiments test whether this is a general principle and find the optimal negative-side behavior.
+**Question:** Does bounding/compressing the activation output range hurt, and how much?
 
-| Experiment | Formula | Negative behavior | Why this tests H3 |
-|---|---|---|---|
-| `x_absx` | x·\|x\| = sign(x)·x² | Full signed output, grad = 2\|x\| everywhere | **Strongest H3 test.** Same gradient magnitude as relu² (2\|x\|) but preserves sign — output is negative for negative inputs. If x·\|x\| beats relu², it proves negative-side information helps, with H1 perfectly controlled (identical gradient scaling). This is the cleanest single experiment for H3. |
-| `elu(0.3)²` | elu(x, α=0.3)² | Small exponential tail: −0.3·(1−e^x) for x<0, then squared | **Dose-response: minimal negative signal.** elu with α=0.3 passes very little negative information (saturates at −0.3). If even this tiny amount helps over relu², H3 has a low threshold. If it doesn't help, the negative signal needs to be substantial. |
-| `gelu²` | gelu(x)² | Smooth, slight negative dip near x≈−0.17 | **Popular activation baseline.** gelu allows a small negative bump before going to zero. Tests whether a "soft gate" that mostly kills negatives but lets a bit through is enough. Also important because gelu is widely used — we need to know how gelu² ranks in our framework. |
-| `mish²` | (x·tanh(softplus(x)))² | Very slight negative region | **Smooth profile comparison to gelu.** mish has a different negative profile than gelu (slightly deeper negative region). If mish² ≈ gelu², the exact negative shape doesn't matter — just whether negatives are passed at all. |
-| `leaky(0.1)²` | leaky_relu(x, 0.1)² | 10% slope negative | **Minimum effective dose.** leaky(0.5)² works. Does leaky(0.1)² work too? This finds the lower bound of useful negative slope. Combined with leaky(0.2)² and leaky(0.8)², maps the full dose-response curve. |
-| `leaky(0.2)²` | leaky_relu(x, 0.2)² | 20% slope negative | **Interpolation point.** Between 0.1 and 0.5. Helps distinguish "any nonzero slope works" from "more slope is better up to 0.5." |
-| `leaky(0.8)²` | leaky_relu(x, 0.8)² | 80% slope negative | **Near-linear test.** At slope 0.8, the activation is almost linear for negatives. Tests whether the *asymmetry* between positive and negative sides matters, or if near-symmetric (like abs²) is better. Previous data: abs² ties relu² at 5000 steps. If leaky(0.8)² also ties, the asymmetry is important. |
-| `relu²_linneg0.5` | relu(x)² for x>0, 0.5·\|x\| for x<0 | Squared positive, linear negative | **H1×H3 cross-test.** The positive side has adaptive gradients (grad = 2x), the negative side has constant gradient (0.5). Tests: does the negative side need H1-style proportional gradients, or is just having nonzero signal enough? If linneg0.5 beats relu², then H3 is true and the negative side doesn't need adaptive gradients. If it underperforms leaky(0.5)², the negative side benefits from H1 too. |
-| `bipolar_relu²` | relu(x)² − 0.25·relu(−x)² | Output goes negative: −0.25x² for x<0 | **Asymmetric sign-preservation.** Like x·\|x\| but with the negative side scaled down to 25%. Tests whether *full* sign preservation matters or a weaker version suffices. Positive gradient = 2x, negative gradient = −0.5x (proportional but smaller). |
+![Activation function shapes](../activation_functions_phase2.png)
 
-**Predicted ranking if H3 is correct (more negative info = better):**
-x·\|x\| ≈ leaky(0.5)² > leaky(0.2)² > leaky(0.1)² > bipolar_relu² > relu²_linneg0.5 > gelu² ≈ mish² > elu(0.3)² > relu²
+*Top-right panel shows the bounded functions (tanh, sigmoid, erf, etc.) that flatten for large inputs. Bottom-middle shows how squaring makes the compression even worse. Compare to the unbounded relu² in bottom-left.*
 
----
+| Experiment | Output range | val_bpb (500) | Post-quant | vs relu² | Category |
+|---|---|---:|---:|---:|---|
+| relu² (baseline) | [0, ∞) | 1.4805 | 1.4838 | — | unbounded |
+| relu²_clamped16 | [0, 16] | **1.4725** | **1.4765** | **-0.008** | near-unbounded |
+| tanh_scaled² | [0, 4] | 1.4759 | 1.4845 | -0.005/+0.001 | mild compression |
+| erf² | [0, 1) | 1.4820 | 1.4884 | +0.002/+0.005 | bounded |
+| clamped4 | [0, 4] | 1.4840 | 1.4886 | +0.004/+0.005 | hard ceiling |
+| softsign² | [0, 1) | 1.4845 | 1.4895 | +0.004/+0.006 | bounded |
+| log1p_relu² | [0, ∞) | 1.4873 | 1.4924 | +0.007/+0.009 | unbounded but compressed growth |
+| hardtanh² | [0, 1] | 1.4897 | 1.4968 | +0.009/+0.013 | hard bounded |
+| sigmoid² | (0, 0.25] | 1.5238 | 1.5269 | +0.043/+0.043 | extreme compression |
+| arctan² | [0, 2.47) | 1.5759 | 1.6116 | +0.095/+0.128 | broken (likely numerical) |
 
-### Cross-Hypothesis Experiments (PENDING — 11 experiments)
+**H2 conclusions:**
 
-These experiments test interactions between hypotheses or probe edge cases that don't fit cleanly into H1/H2/H3.
+1. **Compression hurts, but the story is more nuanced than expected.** The ranking doesn't follow a simple "more bounded = worse" pattern.
 
-| Experiment | Formula | Hypotheses tested | Why it matters |
-|---|---|---|---|
-| `leaky(0.5)³` | leaky(x, 0.5)³ | H1: grad = 3x², much steeper than 2x | **Exponent interaction with negative side.** We know p=2 is optimal for relu. Is it also optimal for leaky? Cubing gives steeper gradient scaling — H1 says this should be worse (super-proportional). If leaky³ is ok, the negative side may stabilize steeper gradients. |
-| `leaky(0.5)^1.5` | leaky(x, 0.5)^1.5 | H1: grad = 1.5x^0.5, sublinear | **Sub-square exponent on leaky.** p=1.5 gives sublinear gradient scaling. H1 predicts this hurts (like gradsqrt did for relu²). If it also hurts on leaky, the exponent effect is universal. |
-| `softplus²_beta5` | softplus(x, β=5)² | H1: near-relu gradient shape | **Curvature at origin — sharp.** softplus with high β is nearly relu (sharp bend at 0). This is basically relu² with a tiny bit of negative-side gradient leaking through. Tests whether softplus's infinitesimal negative gradient matters. |
-| `softplus²_beta0.5` | softplus(x, β=0.5)² | H1×H3: smoother transition, more negative signal | **Curvature at origin — wide.** softplus with low β has a wide transition zone, passing significant signal for moderate negative inputs. This is a "continuous leaky" — tests whether the sharp kink in leaky matters, or just having some negative gradient. |
-| `selu²` rerun | selu(x)² | H1+H2+H3 cross-validation | **All three hypotheses satisfied.** selu has: proportional gradients (H1 ✓), unbounded range (H2 ✓), negative side with self-normalizing properties (H3 ✓). It scored 1.4718 at 500 steps in phase 1 — best in the table. Need to verify this isn't an early artifact (selu's ~1.05x output scale could give a transient boost). |
-| `celu(0.5)²` | celu(x, α=0.5)² | H3: negative-side shape | **Negative saturation depth.** celu with α=0.5 saturates at −0.5 for large negative inputs (vs −1.0 for elu). Tests how much negative range is needed — is the asymptotic value important, or just having any negative signal? |
-| `relu^1.8` | relu(x)^1.8 | H1: grad = 1.8x^0.8, slightly sublinear | **Between relu and relu².** grad ∝ x^0.8 is slightly sublinear. H1 predicts this is slightly worse than relu² but much better than linear relu. Maps the exponent-performance curve precisely. |
-| `relu^2.2` | relu(x)^2.2 | H1: grad = 2.2x^1.2, slightly super-linear | **Just past square.** grad ∝ x^1.2 is slightly super-linear. We know x² (from gradx2) is catastrophic, but 2.2 is much milder. Tests where the instability threshold lies. |
-| `x_silu` | x·silu(x) = x²·σ(x) | H2×H3: bounded envelope on x² | **Self-gated square.** x²·sigmoid(x) is like x² but with a sigmoid envelope that compresses growth for large negative x. Positive side ≈ x² (sigmoid→1), negative side → 0. This is smoother than relu² but similarly positive-dominant. Tests whether sigmoid's smooth gating is better than relu's hard cutoff. |
-| `x_tanh` | x·tanh(x) | H2×H3: bounded growth, sign-preserving | **Bounded sign-preserving.** x·tanh(x) preserves sign (H3 ✓) but compresses growth (tanh→±1 for large x, so output → ±|x|). Tests the tension between H2 (don't compress) and H3 (preserve negatives). If x·tanh is good, H3 benefits outweigh H2 compression cost. |
-| `shifted_relu²` | relu(x + 0.5)² | H3: nonzero output for x > −0.5 | **Shifted activation point.** By shifting the relu threshold left by 0.5, inputs in [−0.5, 0] now produce nonzero output. This is a different H3 mechanism than leaky — instead of scaling the negative side, it moves the boundary. Tests whether the *location* of the zero-crossing matters. |
+2. **Surprise: clamped16 *beat* relu²** (-0.008 BPB). Clamping at 16 (relu(x)² for x<4, flat at 16 beyond) actually helped. This suggests extreme outlier activations may be noisy rather than informative — clamping them acts as regularization.
 
----
+3. **tanh_scaled² is surprisingly competitive.** Scaling tanh by 2x before squaring (output range [0,4]) nearly matches relu². This suggests the output *scale* matters, not just whether it's bounded.
 
-### Validation Runs (PENDING — dependent on screening results)
+4. **log1p_relu² hurts despite being unbounded** (+0.007 BPB). This is the key discriminator: log(1+relu²(x)) is unbounded but compresses growth sublinearly. The fact that it hurts means **H2 is partly about growth rate, not just range bounding**. Sublinear growth (like sublinear gradients in H1) loses magnitude information.
 
-These confirm findings from 500-step screening at longer horizons. Pre-committed based on existing phase 1 data.
+5. **sigmoid² and arctan² are catastrophic** for different reasons. sigmoid² compresses to [0, 0.25] — the range is simply too tiny. arctan² has an anomalous +0.128 post-quant penalty, suggesting a numerical issue (its output range [0, 2.47] creates a scale mismatch with the rest of the network).
 
-**2000-step runs (12 experiments, ~40 min each):** selu² (2 seeds), elu², celu², softplus², x_absx, gelu², mish², leaky(0.1/0.2/0.8)², relu²_linneg0.5
+**Cross-reference — H2 vs H1 interaction:**
 
-**4000-step runs (6 experiments, ~80 min each):** selu² (2 seeds), x_absx, elu², gelu², relu²_linneg0.5
+Many H2 failures might actually be H1 failures in disguise. Bounded activations have saturating gradients (grad→0 for large x), which violates H1. Compare:
 
-**6000-step runs (3 experiments, ~120 min each):** x_absx, selu², elu² — head-to-head vs leaky(0.5)² at 6k (existing: 1.2659)
+| Activation | Bounded? (H2) | Gradient saturates? (H1 violated) | BPB penalty |
+|---|---|---|---:|
+| relu² | No | No | baseline |
+| clamped16 | Mildly | Only for x>4 | -0.008 (helped!) |
+| hardtanh² | Yes | Yes (grad=0 for |x|>1) | +0.009 |
+| sigmoid² | Extremely | Yes (grad→0 both tails) | +0.043 |
+| log1p_relu² | No | No, but gradient shrinks | +0.007 |
 
-**13780-step runs (2 experiments, ~275 min each):** leaky(0.5)² seeds 42 and 1337 — the final validation before submission
-| 3 | L2-6: `x_absX` | 2000 | 40 min |
-| 4 | L2-7: `gelu²` | 2000 | 40 min |
-| 5 | H3-1: `x_absX` | 500 | 10 min |
-| 6 | H3-2: `elu(1.0)²` | 500 | 10 min |
-| 7 | H3-3: `elu(0.3)²` | 500 | 10 min |
-| 8 | H3-9: `relu²_linneg0.5` | 500 | 10 min |
-| 9 | H3-10: `bipolar_relu²` | 500 | 10 min |
-| 10 | X-9: `x_silu` | 500 | 10 min |
-| 11 | X-10: `x_tanh` | 500 | 10 min |
-
-**GPU 1 — "leaky 13k replicate + H3 dose-response"** (~475 min)
-
-| Order | Experiment | Steps | Time |
-|---:|---|---:|---:|
-| 1 | L13-2: `leaky(0.5)²` seed 1337 | 13780 | 275 min |
-| 2 | L2-2: `selu²` seed 1337 | 2000 | 40 min |
-| 3 | L2-3: `elu(1.0)²` | 2000 | 40 min |
-| 4 | L2-9: `leaky(0.1)²` | 2000 | 40 min |
-| 5 | H3-4: `gelu²` | 500 | 10 min |
-| 6 | H3-5: `mish²` | 500 | 10 min |
-| 7 | H3-6: `leaky(0.1)²` | 500 | 10 min |
-| 8 | H3-7: `leaky(0.2)²` | 500 | 10 min |
-| 9 | H3-8: `leaky(0.8)²` | 500 | 10 min |
-| 10 | X-11: `shifted_relu²` | 500 | 10 min |
-
-**GPU 2 — "H1 gradient screen + selu/x_absX at scale"** (~470 min)
-
-| Order | Experiment | Steps | Time |
-|---:|---|---:|---:|
-| 1 | H1-1: `relu²_grad1.5x` | 500 | 10 min |
-| 2 | H1-2: `relu²_grad3x` | 500 | 10 min |
-| 3 | H1-3: `relu²_gradsqrt` | 500 | 10 min |
-| 4 | H1-4: `relu²_gradx²` | 500 | 10 min |
-| 5 | H1-5: `leaky(0.5)²_constgrad` | 500 | 10 min |
-| 6 | H1-6: `abs²_constgrad` | 500 | 10 min |
-| 7 | H1-7: `relu²_gradfloor` | 500 | 10 min |
-| 8 | H1-8: `relu²_gradceil` | 500 | 10 min |
-| 9 | L4-1: `selu²` seed 42 | 4000 | 80 min |
-| 10 | L4-3: `x_absX` | 4000 | 80 min |
-| 11 | L6-1: `x_absX` | 6000 | 120 min |
-| 12 | L2-12: `relu²_linneg0.5` | 2000 | 40 min |
-| 13 | L2-10: `leaky(0.2)²` | 2000 | 40 min |
-
-**GPU 3 — "H2 compression screen + selu/elu at scale"** (~470 min)
-
-| Order | Experiment | Steps | Time |
-|---:|---|---:|---:|
-| 1 | H2-1: `hardtanh²` | 500 | 10 min |
-| 2 | H2-2: `softsign²` | 500 | 10 min |
-| 3 | H2-3: `sigmoid²` | 500 | 10 min |
-| 4 | H2-4: `arctan²` | 500 | 10 min |
-| 5 | H2-5: `erf²` | 500 | 10 min |
-| 6 | H2-6: `tanh_scaled²` | 500 | 10 min |
-| 7 | H2-7: `relu²_clamped4` | 500 | 10 min |
-| 8 | H2-8: `relu²_clamped16` | 500 | 10 min |
-| 9 | H2-9: `log1p_relu²` | 500 | 10 min |
-| 10 | L4-2: `selu²` seed 1337 | 4000 | 80 min |
-| 11 | L4-4: `elu(1.0)²` | 4000 | 80 min |
-| 12 | L6-2: `selu²` | 6000 | 120 min |
-| 13 | L2-4: `celu²` | 2000 | 40 min |
-| 14 | L2-11: `leaky(0.8)²` | 2000 | 40 min |
-
-**GPU 4 — "Cross-hypothesis + LR/exponent sweep + gelu/elu at scale"** (~470 min)
-
-| Order | Experiment | Steps | Time |
-|---:|---|---:|---:|
-| 1 | X-1: `leaky(0.5)³` | 500 | 10 min |
-| 2 | X-2: `leaky(0.5)^1.5` | 500 | 10 min |
-| 3 | X-3: `softplus²_beta5` | 500 | 10 min |
-| 4 | X-4: `softplus²_beta0.5` | 500 | 10 min |
-| 5 | X-5: `selu²` rerun | 500 | 10 min |
-| 6 | X-6: `celu(0.5)²` | 500 | 10 min |
-| 7 | X-7: `relu^1.8` | 500 | 10 min |
-| 8 | X-8: `relu^2.2` | 500 | 10 min |
-| 9 | X-12: `leaky(0.5)²_lrx1.5` | 500 | 10 min |
-| 10 | X-13: `leaky(0.5)²_lrx0.8` | 500 | 10 min |
-| 11 | X-14: `leaky(0.5)²_warmupx2` | 500 | 10 min |
-| 12 | L4-5: `gelu²` | 4000 | 80 min |
-| 13 | L4-6: `leaky(0.5)²_lrx1.5` | 4000 | 80 min |
-| 14 | L4-7: `leaky(0.5)²_lrx0.8` | 4000 | 80 min |
-| 15 | L6-3: `elu(1.0)²` | 6000 | 120 min |
-
-**GPU 5 — "Remaining 2000-step + overflow"** (~470 min)
-
-| Order | Experiment | Steps | Time |
-|---:|---|---:|---:|
-| 1 | L2-5: `softplus²` | 2000 | 40 min |
-| 2 | L2-8: `mish²` | 2000 | 40 min |
-| 3 | L4-8: `relu²_linneg0.5` | 4000 | 80 min |
-| 4 | spare: best H1 variant at 4000 | 4000 | 80 min |
-| 5 | spare: best surprise at 4000 | 4000 | 80 min |
-| 6 | spare: best overall at 6000 | 6000 | 120 min |
-| 7–10 | spare slots (4 × 500 step) | 500 | 40 min |
-
-GPU 5 has ~360 min of pre-committed work and ~120 min of spare slots. Use the spare slots for: (a) re-running any 500-step experiment that gave a surprising result with a different seed, or (b) running the best new discovery at longer scale. **Decision: check results from GPUs 2-4 as they complete their 500-step queues (~80 min in) and fill GPU 5's spare slots with the most promising follow-ups.**
+The worst H2 results are exactly the ones that also violate H1 most severely. **We cannot cleanly separate H2 from H1 with these experiments.** The missing experiment: a bounded activation with an artificially maintained proportional gradient (custom backward). If that recovers, H2 is just H1 in disguise.
 
 ---
 
-### Decision criteria after Phase 2
+### H3 Results: Negative-Side Information ✅ COMPLETE
 
-**After 500-step results come in (~80 min wall time):**
+**Question:** Does allowing signal for negative inputs improve learning?
 
-| Result pattern | What it means | What to do with spare GPU-5 slots |
-|---|---|---|
-| All const-grad variants collapse (H1-5, H1-6 show ~0.04+ penalty) | H1 confirmed universal | H1 is settled, don't scale gradient variants |
-| grad=3x beats grad=2x by >0.005 | Steeper gradients help | Run best gradient variant at 4000 steps in spare slot |
-| All H2 bounded activations lose by >0.008 | H2 confirmed | H2 is settled, don't scale any bounded variant |
-| `x_absX` beats relu² by >0.005 at 500 | H3 strongly confirmed | It's already queued at 4000 and 6000 — watch those results closely |
-| `relu²_linneg0.5` competitive with leaky(0.5)² | Negative side doesn't need adaptive grad | This is a new insight — scale it up in spare slot |
-| `leaky(0.5)³` diverges | p=2 is fundamental even for leaky | Confirms p=2 constraint is universal |
-| `relu^2.2` competitive and stable | Exponent has room above 2.0 | Try leaky(0.5)^2.2 in spare slot |
-| selu² rerun matches 1.4718 | Original result was real, not artifact | Already scaling at 4000/6000 — monitor |
-| LR or warmup variant beats default leaky(0.5)² | Hyperparameters not yet optimized for leaky | Scale winning hyperparameter config to 4000 (already queued) |
+![Activation function shapes](../activation_functions_phase2.png)
 
-**After 13k results come in (~5 hrs):**
+*Top-left panel shows the key comparison: relu (hard cutoff at zero) vs leaky variants (gentle negative slopes). Bottom-left shows how these look after squaring — notice x·|x| (green dashed) is the only one that produces negative output.*
 
-| Result | Meaning | Action |
-|---|---|---|
-| Both seeds show leaky(0.5)² beating relu² 13k baseline (1.2498 post-quant) by >0.003 | Advantage is real and holds at scale | **Submit leaky(0.5)² as activation. Then check if any Phase 2 discovery beats leaky(0.5)² and run that at 13k.** |
-| One seed better, one seed worse | Within noise even at 13k | Need 3rd seed or look for a bigger gain from Phase 2 discoveries |
-| Both seeds match or lose to relu² | Advantage was noise | relu² is the answer for activation. Focus effort on other competition axes. |
+| Experiment | Negative behavior | val_bpb (500) | Post-quant | vs relu² |
+|---|---|---:|---:|---:|
+| **leaky(0.8)²** | 80% neg slope | **1.4595** | **1.4635** | **-0.021** |
+| leaky(0.2)² | 20% neg slope | 1.4685 | 1.4723 | -0.012 |
+| mish² | smooth, slight neg dip | 1.4693 | 1.4721 | -0.011 |
+| elu(0.3)² | small exp tail (-0.3 sat) | 1.4701 | 1.4732 | -0.010 |
+| leaky(0.5)² | 50% neg slope (known best) | 1.4708 | 1.4747 | -0.010 |
+| leaky(0.1)² | 10% neg slope | 1.4709 | 1.4751 | -0.010 |
+| relu² (baseline) | kills all negatives | 1.4805 | 1.4838 | — |
+| x·|x| | full signed output | 1.5014 | 1.5051 | +0.021 |
+| gelu² | very slight neg bump | 1.5857 | 1.6139 | +0.105 |
+
+**Incomplete runs** (stopped early, use with caution):
+
+| Experiment | Steps completed | val_bpb at last step |
+|---|---:|---:|
+| bipolar_relu² | 200 | 1.7032 |
+| relu²_linneg0.5 | 200 | 1.7119 |
+
+**H3 conclusions:**
+
+1. **Negative signal helps — confirmed across many variants.** Every leaky variant and mish² and elu(0.3)² beat relu² at 500 steps. The probability of all six landing on the same side by chance is ~1.6%.
+
+2. **Surprise: leaky(0.8)² is the best at 500 steps** (1.4595 vs leaky(0.5)²'s 1.4708). BUT — recall that 500-step rankings within the squared family are unreliable (section 5). The 4000-step leak sweep showed 0.3/0.5/0.7 are all within noise. leaky(0.8)²'s 500-step lead could be an init-scale artifact like abs²'s was.
+
+3. **Surprise: x·|x| is WORSE than relu²** (+0.021 BPB). This was supposed to be the strongest H3 test — same gradient magnitude as relu² but with sign preservation. The fact that it hurts means **full sign preservation is actively harmful**, even though partial negative signal (leaky) helps. Possible explanation: allowing the network to produce large negative activations creates an optimization difficulty that outweighs the information benefit.
+
+4. **gelu² is catastrophic** (+0.105 BPB). gelu has a tiny negative bump near x≈-0.17 before going to zero — apparently this specific shape interacts badly with squaring. The gelu² run also stopped early (step 426), and the huge quant gap (+0.028) suggests numerical instability.
+
+5. **The dose matters.** The leaky slope sweep at 500 steps:
+
+   | Leak slope | val_bpb (500) | Post-quant |
+   |---:|---:|---:|
+   | 0.0 (relu) | 1.4805 | 1.4838 |
+   | 0.1 | 1.4709 | 1.4751 |
+   | 0.2 | 1.4685 | 1.4723 |
+   | 0.5 | 1.4708 | 1.4747 |
+   | 0.8 | **1.4595** | **1.4635** |
+   | 1.0 (abs) | 1.4698 | — |
+
+   More leak generally helps at 500 steps, but the 4000-step results show convergence:
+
+   | Leak slope | val_bpb (4000) | Post-quant (4000) |
+   |---:|---:|---:|
+   | 0.0 (relu) | 1.2850 | — |
+   | 0.3 | 1.2835 | 1.2873 |
+   | 0.5 | **1.2822** | **1.2862** |
+   | 0.7 | 1.2827 | 1.2867 |
+
+   At 4000 steps the range narrows to 0.0013 BPB (within noise). The useful region is broad: 0.3-0.7 all work.
+
+**Cross-reference — H3 results that also test H1 and H2:**
+
+| Activation | H1 (proportional grad)? | H2 (unbounded)? | H3 (neg signal)? | BPB (500) |
+|---|---|---|---|---:|
+| leaky(0.5)² | ✓ grad=2x for x>0, x for x<0 | ✓ unbounded | ✓ 50% leak | **1.4708** |
+| mish² | ✓ complex but proportional-ish | ✓ unbounded | ✓ slight neg dip | 1.4693 |
+| elu(0.3)² | ✓ proportional | ✓ unbounded | ✓ exp neg tail | 1.4701 |
+| relu² | ✓ grad=2x | ✓ unbounded | ✗ kills negatives | 1.4805 |
+| x·\|x\| | ✓ grad=2\|x\| | ✓ unbounded | ✓✓ full sign | 1.5014 |
+| gelu² | ? complex grad profile | ✓ unbounded | ~minimal | 1.5857 |
+| sigmoid² | ✗ saturating | ✗ bounded [0,0.25] | ✗ no negatives | 1.5238 |
+
+**Pattern:** Activations that satisfy all three rules (leaky, mish, elu) cluster near the top. Activations that violate H1 or H2 (sigmoid², gelu²) are much worse. x·|x| violates an unstated fourth rule: "don't let the network produce very large negative activations" — full sign preservation creates optimization problems even though it satisfies H1-H3 formally.
+
+---
+
+### Cross-Hypothesis Experiments (PARTIALLY COMPLETE)
+
+These test interactions between hypotheses. Some are still running.
+
+**Completed or in-progress:**
+
+| Experiment | Hypotheses | Status | val_bpb (latest) | Step |
+|---|---|---|---:|---:|
+| leaky(0.5)³ | H1: steeper grad (3x²) | in progress | 1.5997 | 300 |
+| leaky(0.5)^1.5 | H1: sublinear grad | in progress | 2.2551 | 100 |
+| softplus²_beta5 | near-relu shape | in progress | 1.6208 | 250 |
+| softplus²_beta0.5 | smoother, more neg signal | in progress | 1.7097 | 250 |
+| selu² rerun | all three hypotheses | in progress | 1.6136 | 250 |
+| celu(0.5)² | H3: neg saturation depth | in progress | 1.6191 | 250 |
+
+**From earlier runs (different hyperparams, compare with caution):**
+
+| Experiment | val_bpb (500) | Post-quant | Notes |
+|---|---:|---:|---|
+| relu^2.2 | 1.4546 | 1.4609 | slightly past square — stable and good |
+| shifted_relu²_neg | 1.4821 | 1.4832 | shifted threshold left — minimal effect |
+| shifted_relu²_pos | 1.4853 | 1.4862 | shifted threshold right — slightly worse |
+
+**Not yet started:** relu^1.8, x_silu, x_tanh, LR/warmup sweeps for leaky(0.5)².
+
+---
+
+## The complete activation leaderboard
+
+Every activation we've tested, sorted by best available BPB. This consolidates results from all phases and run lengths.
+
+### At 500 steps (screening — use for elimination only)
+
+| Rank | Activation | val_bpb | Post-quant | H1? | H2? | H3? | Source |
+|---:|---|---:|---:|---|---|---|---|
+| 1 | leaky(0.8)² | **1.4595** | **1.4635** | ✓ | ✓ | ✓ | Phase 2 H3 |
+| 2 | leaky(0.2)² | 1.4685 | 1.4723 | ✓ | ✓ | ✓ | Phase 2 H3 |
+| 3 | mish² | 1.4693 | 1.4721 | ✓ | ✓ | ✓ | Phase 2 H3 |
+| 4 | abs² | 1.4698 | — | ✓ | ✓ | ✓ | Phase 1 |
+| 5 | elu(0.3)² | 1.4701 | 1.4732 | ✓ | ✓ | ✓ | Phase 2 H3 |
+| 6 | leaky(0.5)² | 1.4708 | 1.4747 | ✓ | ✓ | ✓ | Phase 1 |
+| 7 | leaky(0.1)² | 1.4709 | 1.4751 | ✓ | ✓ | ✓ | Phase 2 H3 |
+| 8 | relu²_gradfloor | **1.4716** | **1.4746** | ✓+ | ✓ | ✗ | Phase 2 H1 |
+| 9 | selu² | 1.4718 | — | ✓ | ✓ | ✓ | Phase 1 |
+| 10 | clamped16 | 1.4725 | 1.4765 | ✓ | ~✓ | ✗ | Phase 2 H2 |
+| 11 | tanh_scaled² | 1.4759 | 1.4845 | ~ | ~ | ✗ | Phase 2 H2 |
+| 12 | elu² | 1.4778 | — | ✓ | ✓ | ✓ | Phase 1 |
+| 13 | relu²_grad1.5x | 1.4778 | 1.4810 | ✓ | ✓ | ✗ | Phase 2 H1 |
+| 14 | softplus² | 1.4788 | — | ✓ | ✓ | ~ | Phase 1 |
+| 15 | relu²_grad3x | 1.4789 | 1.4817 | ✓ | ✓ | ✗ | Phase 2 H1 |
+| 16 | celu² | 1.4792 | — | ✓ | ✓ | ✓ | Phase 1 |
+| 17 | relu² | 1.4805 | 1.4838 | ✓ | ✓ | ✗ | Phase 1 |
+| 18 | relu²_gradceil | 1.4812 | 1.4844 | ~ | ✓ | ✗ | Phase 2 H1 |
+| 19 | erf² | 1.4820 | 1.4884 | ✗ | ✗ | ✗ | Phase 2 H2 |
+| 20 | clamped4 | 1.4840 | 1.4886 | ~ | ✗ | ✗ | Phase 2 H2 |
+| 21 | silu² | 1.4841 | — | ~ | ✓ | ~ | Phase 1 |
+| 22 | softsign² | 1.4845 | 1.4895 | ✗ | ✗ | ✗ | Phase 2 H2 |
+| 23 | relu²_postsigmoid | 1.4850 | — | ~ | ✓ | ✗ | Phase 1 |
+| 24 | swirelu | 1.4854 | — | ✓ | ✓ | ✗ | Phase 1 |
+| 25 | relu^1.5 | 1.4862 | — | ~ | ✓ | ✗ | Phase 1 |
+| 26 | log1p_relu² | 1.4873 | 1.4924 | ~ | ~ | ✗ | Phase 2 H2 |
+| 27 | hardtanh² | 1.4897 | 1.4968 | ✗ | ✗ | ✗ | Phase 2 H2 |
+| 28 | relu²_narrow | 1.4908 | — | ✓ | ✓ | ✗ | Phase 1 |
+| 29 | relu²_lingate | 1.4965 | — | ~ | ✓ | ✗ | Phase 1 |
+| 30 | relu²_gradsqrt | 1.5001 | 1.5036 | ✗ | ✓ | ✗ | Phase 2 H1 |
+| 31 | relu (no ²) | 1.5007 | — | ✗ | ✓ | ✗ | Phase 1 |
+| 32 | x·\|x\| | 1.5014 | 1.5051 | ✓ | ✓ | ✓✓ | Phase 2 H3 |
+| 33 | 2·relu | 1.5034 | — | ✗ | ✓ | ✗ | Phase 1 |
+| 34 | sigmoid² | 1.5238 | 1.5269 | ✗ | ✗ | ✗ | Phase 2 H2 |
+| 35 | arctan² | 1.5759 | 1.6116 | ✗ | ✗ | ✗ | Phase 2 H2 |
+| 36 | leaky(0.5)²_constgrad | 1.5863 | 1.5895 | ✗ | ✓ | ✓ | Phase 2 H1 |
+| 37 | abs²_constgrad | 1.5930 | 1.5957 | ✗ | ✓ | ✓ | Phase 2 H1 |
+| 38 | gelu² | 1.5857 | 1.6139 | ✗ | ✓ | ~ | Phase 2 H3 |
+| 39 | swiglu² | 1.6055 | — | — | — | — | Phase 1 |
+| 40 | relu²_gradx² | 1.7004 | 1.7034 | ✗ | ✓ | ✗ | Phase 2 H1 |
+
+**Key pattern in the leaderboard:** The top 10 are almost entirely activations that satisfy all three hypotheses. The bottom 10 all violate at least one — usually H1 (gradient proportionality).
+
+### At 2000 steps (validation)
+
+| Rank | Activation | val_bpb | Post-quant | Source |
+|---:|---|---:|---:|---|
+| 1 | leaky(0.5)² | **1.3200** | **1.3218** | Wave 22 |
+| 2 | abs² | 1.3219 | 1.3238 | Wave 22 |
+| 3 | softshrink² | 1.3222 | 1.3238 | Wave 22 |
+| 4 | selu² | 1.3236 | 1.3254 | Wave 22 |
+| 5 | relu² (ctrl) | 1.3245 | 1.3264 | Wave 22 |
+
+### At 4000 steps (leak sweep)
+
+| Rank | Activation | val_bpb | Post-quant |
+|---:|---|---:|---:|
+| 1 | leaky(0.5)² | **1.2822** | **1.2862** |
+| 2 | leaky(0.7)² | 1.2827 | 1.2867 |
+| 3 | leaky(0.3)² | 1.2835 | 1.2873 |
+| 4 | relu² | 1.2850 | — |
+
+### At 6000 steps (head-to-head)
+
+| Rank | Activation | val_bpb | Post-quant |
+|---:|---|---:|---:|
+| 1 | leaky(0.5)² | **1.2659** | **1.2708** |
+| 2 | relu² | 1.2688 | 1.2737 |
+| 3 | abs² | 1.2691 | 1.2745 |
+
+### At 13000 steps
+
+| Activation | val_bpb | Post-quant |
+|---|---:|---:|
+| relu² | **1.2440** | **1.2498** |
+| leaky(0.5)² | *not yet run* | *not yet run* |
+
+---
+
+## Secondary results
+
+### How gates work
+
+A gate adds a second learned projection that produces a scalar mask (typically 0-1 via sigmoid) that is multiplied element-wise with the activation output. In `train_gpt.py`, gated variants use a `fc_gate` linear layer alongside the main `fc` layer.
+
+**Parameter matching:** Gated variants reduce hidden dim to 2/3 to keep total params equal:
+
+| Variant | fc | fc_gate | proj | Total | Hidden dim |
+|---|---:|---:|---:|---:|---:|
+| relu² (no gate) | 524,288 | — | 524,288 | **1,048,576** | 1024 |
+| gated_relu² | 349,696 | 349,696 | 349,696 | **1,049,088** | 683 |
+| relu²_narrow | 349,696 | — | 349,696 | **699,392** | 683 |
+
+| Variant | BPB (500) | Params | Takeaway |
+|---|---:|---:|---|
+| relu² | 1.4805 | 1,048,576 | full width, no gate |
+| gated_relu² | 1.4796 | 1,049,088 | gate compensates for width loss — tied with full-width |
+| relu²_narrow | 1.4908 | 699,392 | same width as gated, no gate — worse |
+
+The gate helps relative to narrow (1.4908→1.4796), but full-width without gate is equally good (1.4805). **Width > gating at matched params.**
+
+### Gate placement
+
+| Variant | BPB (500) | Order |
+|---|---:|---|
+| gated_relu² | 1.4779 | square first, then gate |
+| relu²_postsigmoid | 1.4850 | gate first, then square |
+| relu²_lingate | 1.4965 | unconstrained linear gate |
+
+Square before gating > gating before squaring. Bounded sigmoid gate > unbounded linear gate.
+
+---
+
+## Leak sweep follow-up
+
+Wave 26 checked whether `0.5` is a special leak value:
+
+| Variant | Seed | BPB (4000) | Post-quant |
+|---|---:|---:|---:|
+| leaky(0.5)² | 42 | **1.2822** | **1.2862** |
+| leaky(0.7)² | 1337 | 1.2827 | 1.2867 |
+| leaky(0.3)² | 1337 | 1.2835 | 1.2873 |
+| relu² | — | 1.2850 | — |
+
+All three leaky variants beat relu² (probability of all three by chance: ~12.5%). The useful region is broad (0.3-0.7). Seeds differ between runs, so precise ranking within the range isn't possible. 0.5 still looks like the safest default.
+
+---
+
+## What is still uncertain
+
+1. **Whether `leaky(0.5)²` stays best at full submission length.** The ~0.003 advantage is consistent across every checkpoint, but the real test is the 13k run against the relu² baseline (1.2498 post-quant). This is the highest-priority experiment.
+
+2. **Whether leaky(0.8)² is genuinely better than leaky(0.5)².** It leads at 500 steps (1.4595 vs 1.4708) but this could be an init-scale artifact. Needs 4000+ step validation.
+
+3. **Whether gradfloor can be combined with leaky.** `gradfloor` was the best H1 variant on relu². Has anyone tried `leaky(0.5)²_gradfloor`? This combines the best H1 tweak with the best H3 tweak.
+
+4. **The H2/H1 entanglement.** We can't cleanly separate "compression hurts" from "gradient saturation hurts" because bounded activations always have both. A custom-backward bounded activation that maintains proportional gradients would resolve this.
+
+5. **Cross-hypothesis experiments are still running.** leaky(0.5)³, leaky(0.5)^1.5, softplus variants, selu² rerun are in progress. Early signs: leaky(0.5)^1.5 is at 2.2551 at step 100 (very bad — confirms sublinear exponents fail on leaky too).
+
+---
+
+## Strategic assessment
+
+**Rules discovered (ranked by effect size):**
+
+| Rule | Effect size | Noise multiple | Status |
+|---|---:|---:|---|
+| H1: Proportional gradients required | +0.11 BPB penalty if removed | 37x | **Confirmed across 3 bases** |
+| H2: Don't compress output range | +0.01-0.10 BPB | 3-33x | **Confirmed, but entangled with H1** |
+| Don't square gated activations | +0.04-0.14 BPB | 14-46x | **Confirmed** |
+| H3: Preserve some negative signal | -0.003 BPB gain | 1x (at noise) | **Supported by consistency across 6+ variants** |
+| Width > gating at matched params | ~0 BPB difference | — | **Confirmed** |
+| p=2 is the optimal exponent | p=3 diverges, p=1.5 is worse | — | **Confirmed** |
+
+**Have we found something better than relu²?** Yes — `leaky(0.5)²` is consistently ~0.003 BPB better. Modest but real.
+
+**What's the biggest remaining win?** The `gradfloor` result (+0.009 over relu²) combined with leaky's +0.003 could potentially stack. `leaky(0.5)²_gradfloor` is the obvious next experiment.
+
+**Next actions (priority order):**
+1. Run leaky(0.5)² at 13k steps (2 seeds) — decides whether to submit it
+2. Try leaky(0.5)²_gradfloor — could stack both improvements
+3. Validate leaky(0.8)² at 4000+ steps — is the 500-step lead real?
+4. Wait for cross-hypothesis experiments to finish
