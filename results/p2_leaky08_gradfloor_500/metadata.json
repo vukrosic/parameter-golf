@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "p2_leaky08_gradfloor_500",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-21T12:39:16+00:00",
+  "git": {
+    "commit": "73f08a2b1dd58f5bd81eac95faa15b7d8d5066c5",
+    "commit_short": "73f08a2",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "580.126.09",
+      "memory_total": "32607 MiB",
+      "name": "NVIDIA GeForce RTX 5090"
+    }
+  },
+  "log_path": "logs/p2_leaky08_gradfloor_500.txt",
+  "run_id": "p2_leaky08_gradfloor_500"
+}

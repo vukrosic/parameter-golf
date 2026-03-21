@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.28404887,
+    "val_loss": 2.16806272
+  },
+  "generated_at_utc": "2026-03-21T19:31:07+00:00",
+  "int8_zlib_model_bytes": 15988559,
+  "int8_zlib_total_submission_bytes": 16070212,
+  "last_eval": {
+    "max_steps": 4000,
+    "step": 4000,
+    "val_bpb": 1.2833,
+    "val_loss": 2.1668
+  },
+  "run_id": "val_embed_bn128_untied_s1337_4k"
+}
