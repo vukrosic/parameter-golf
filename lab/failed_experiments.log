@@ -1,0 +1,1 @@
+Fri Mar 20 19:16:44 UTC 2026 | p2_leaky05_13k_s42 | exit=143 | 180s | MLP_ACT=leaky_relu2_05 SEED=42 CHECKPOINT_EVERY=1000 
