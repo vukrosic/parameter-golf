@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 QUEUE_FILE="${1:-lab/queue_ordered.txt}"
 NUM_GPUS="${2:-8}"
 FAIL_LOG="lab/failed_experiments.log"
-LOCK_DIR="lab/.queue_lock"
+LOCK_FILE="/tmp/gpu_scheduler.lock"
 
 echo "===== Worker-pool scheduler started at $(date) ====="
 echo "GPUs: $NUM_GPUS"
@@ -34,29 +34,35 @@ TOTAL=$(wc -l < "$JOB_FILE")
 echo "Pending experiments: $TOTAL"
 echo ""
 
-mkdir -p logs "$LOCK_DIR" 2>/dev/null
+mkdir -p logs 2>/dev/null
 
 # Atomic job counter file
 COUNTER_FILE=$(mktemp /tmp/gpu_counter.XXXXXX)
 echo "0" > "$COUNTER_FILE"
+
+# grab_next_job: atomically reads and increments the counter using flock.
+# Returns the job index (0-based) or -1 if no more jobs.
+grab_next_job() {
+    (
+        flock -x 200
+        local idx
+        idx=$(cat "$COUNTER_FILE")
+        if [ "$idx" -ge "$TOTAL" ]; then
+            echo "-1"
+        else
+            echo $((idx + 1)) > "$COUNTER_FILE"
+            echo "$idx"
+        fi
+    ) 200>"$LOCK_FILE"
+}
 
 # Worker function: runs on one GPU, keeps grabbing jobs until none remain
 gpu_worker() {
     local gpu_id=$1
 
     while true; do
-        # Atomically grab next job index using flock
         local job_idx
-        job_idx=$(
-            flock 9
-            local idx=$(cat "$COUNTER_FILE")
-            if [ "$idx" -ge "$TOTAL" ]; then
-                echo "-1"
-            else
-                echo $((idx + 1)) > "$COUNTER_FILE"
-                echo "$idx"
-            fi
-        ) 9>"$LOCK_DIR/counter.lock"
+        job_idx=$(grab_next_job)
 
         # No more jobs
         if [ "$job_idx" = "-1" ]; then
@@ -113,8 +119,7 @@ for pid in "${pids[@]}"; do
 done
 
 # Cleanup
-rm -f "$JOB_FILE" "$COUNTER_FILE"
-rm -rf "$LOCK_DIR"
+rm -f "$JOB_FILE" "$COUNTER_FILE" "$LOCK_FILE"
 
 echo ""
 echo "===== Worker-pool scheduler finished at $(date) ====="

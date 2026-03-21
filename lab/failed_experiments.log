@@ -1,1 +1,45 @@
 Fri Mar 20 19:16:44 UTC 2026 | p2_leaky05_13k_s42 | exit=143 | 180s | MLP_ACT=leaky_relu2_05 SEED=42 CHECKPOINT_EVERY=1000 
+Sat Mar 21 04:43:23 UTC 2026 | p2_leaky05_gradfloor_500 | exit=143 | 12s | GPU=6 | MLP_ACT=leaky05_gradfloor 
+Sat Mar 21 04:43:23 UTC 2026 | p2_leaky05_gradfloor_500 | exit=143 | 12s | GPU=0 | MLP_ACT=leaky05_gradfloor 
+Sat Mar 21 04:43:23 UTC 2026 | p2_leaky05_gradfloor_500 | exit=143 | 12s | GPU=1 | MLP_ACT=leaky05_gradfloor 
+Sat Mar 21 04:43:23 UTC 2026 | p2_leaky05_13k_s42 | exit=143 | 12s | GPU=7 | MLP_ACT=leaky_relu2_05 SEED=42 CHECKPOINT_EVERY=1000 
+Sat Mar 21 04:43:23 UTC 2026 | p2_leaky05_gradfloor_2k | exit=143 | 12s | GPU=5 | MLP_ACT=leaky05_gradfloor 
+Sat Mar 21 04:43:23 UTC 2026 | p2_leaky05_gradfloor_500 | exit=143 | 12s | GPU=2 | MLP_ACT=leaky05_gradfloor 
+Sat Mar 21 04:43:23 UTC 2026 | p2_leaky05_gradfloor_2k | exit=143 | 12s | GPU=3 | MLP_ACT=leaky05_gradfloor 
+Sat Mar 21 04:43:23 UTC 2026 | p2_leaky05_gradfloor_2k | exit=143 | 12s | GPU=4 | MLP_ACT=leaky05_gradfloor 
+Sat Mar 21 04:43:23 UTC 2026 | p2_h3_bipolar | exit=143 | 16s | GPU=0 | MLP_ACT=bipolar_relu2 
+Sat Mar 21 04:43:24 UTC 2026 | p2_h3_bipolar | exit=143 | 17s | GPU=5 | MLP_ACT=bipolar_relu2 
+Sat Mar 21 04:43:24 UTC 2026 | p2_h3_bipolar | exit=143 | 17s | GPU=1 | MLP_ACT=bipolar_relu2 
+Sat Mar 21 04:43:24 UTC 2026 | p2_h3_bipolar | exit=143 | 17s | GPU=2 | MLP_ACT=bipolar_relu2 
+Sat Mar 21 04:43:24 UTC 2026 | p2_h3_bipolar | exit=143 | 17s | GPU=3 | MLP_ACT=bipolar_relu2 
+Sat Mar 21 04:43:24 UTC 2026 | p2_x_leaky05_pow15 | exit=143 | 17s | GPU=4 | MLP_ACT=leaky05_pow15 
+Sat Mar 21 04:43:24 UTC 2026 | p2_x_leaky05_pow15 | exit=143 | 17s | GPU=7 | MLP_ACT=leaky05_pow15 
+Sat Mar 21 04:43:24 UTC 2026 | p2_h3_bipolar | exit=143 | 17s | GPU=6 | MLP_ACT=bipolar_relu2 
+Sat Mar 21 04:43:40 UTC 2026 | p2_x_relu22 | exit=1 | 16s | GPU=5 | MLP_ACT=relu22 
+Sat Mar 21 04:43:40 UTC 2026 | p2_x_relu18 | exit=1 | 17s | GPU=0 | MLP_ACT=relu18 
+Sat Mar 21 04:43:40 UTC 2026 | p2_x_x_tanh | exit=1 | 16s | GPU=2 | MLP_ACT=x_tanh 
+Sat Mar 21 04:43:40 UTC 2026 | p2_x_x_silu | exit=1 | 16s | GPU=1 | MLP_ACT=x_silu 
+Sat Mar 21 04:43:41 UTC 2026 | p2_x_shifted_relu2 | exit=1 | 17s | GPU=3 | MLP_ACT=shifted_relu2_neg 
+Sat Mar 21 04:43:41 UTC 2026 | p2_selu2_2k_s1337 | exit=1 | 17s | GPU=7 | MLP_ACT=selu2 SEED=1337 
+Sat Mar 21 04:43:41 UTC 2026 | p2_selu2_2k_s42 | exit=1 | 17s | GPU=4 | MLP_ACT=selu2 SEED=42 
+Sat Mar 21 04:43:41 UTC 2026 | p2_elu2_2k | exit=1 | 17s | GPU=6 | MLP_ACT=elu2 
+Sat Mar 21 04:43:50 UTC 2026 | p2_celu2_2k | exit=1 | 10s | GPU=5 | MLP_ACT=celu2 
+Sat Mar 21 04:43:50 UTC 2026 | p2_gelu2_2k | exit=1 | 10s | GPU=1 | MLP_ACT=gelu2 
+Sat Mar 21 04:43:50 UTC 2026 | p2_x_absx_2k | exit=1 | 10s | GPU=2 | MLP_ACT=x_absx 
+Sat Mar 21 04:43:51 UTC 2026 | p2_softplus2_2k | exit=1 | 11s | GPU=0 | MLP_ACT=softplus2 
+Sat Mar 21 04:43:51 UTC 2026 | p2_leaky02_2k | exit=1 | 10s | GPU=4 | MLP_ACT=leaky_relu2_02 
+Sat Mar 21 04:43:51 UTC 2026 | p2_mish2_2k | exit=1 | 10s | GPU=3 | MLP_ACT=mish2 
+Sat Mar 21 04:43:51 UTC 2026 | p2_leaky01_2k | exit=1 | 10s | GPU=7 | MLP_ACT=leaky_relu2_01 
+Sat Mar 21 04:43:52 UTC 2026 | p2_leaky08_2k | exit=1 | 11s | GPU=6 | MLP_ACT=leaky_relu2_08 
+Sat Mar 21 04:44:01 UTC 2026 | p2_linneg05_2k | exit=1 | 11s | GPU=5 | MLP_ACT=relu2_linneg05 
+Sat Mar 21 04:44:01 UTC 2026 | p2_x_absx_4k | exit=1 | 10s | GPU=0 | MLP_ACT=x_absx CHECKPOINT_EVERY=4000 
+Sat Mar 21 04:44:02 UTC 2026 | p2_selu2_4k_s42 | exit=1 | 12s | GPU=1 | MLP_ACT=selu2 SEED=42 CHECKPOINT_EVERY=4000 
+Sat Mar 21 04:44:02 UTC 2026 | p2_selu2_4k_s1337 | exit=1 | 11s | GPU=2 | MLP_ACT=selu2 SEED=1337 CHECKPOINT_EVERY=4000 
+Sat Mar 21 04:44:02 UTC 2026 | p2_elu2_4k | exit=1 | 11s | GPU=4 | MLP_ACT=elu2 CHECKPOINT_EVERY=4000 
+Sat Mar 21 04:44:02 UTC 2026 | p2_linneg05_4k | exit=1 | 10s | GPU=7 | MLP_ACT=relu2_linneg05 CHECKPOINT_EVERY=4000 
+Sat Mar 21 04:44:02 UTC 2026 | p2_gelu2_4k | exit=1 | 11s | GPU=3 | MLP_ACT=gelu2 CHECKPOINT_EVERY=4000 
+Sat Mar 21 04:44:03 UTC 2026 | p2_x_absx_6k | exit=1 | 11s | GPU=6 | MLP_ACT=x_absx CHECKPOINT_EVERY=1000 
+Sat Mar 21 04:44:09 UTC 2026 | p2_selu2_6k | exit=1 | 8s | GPU=5 | MLP_ACT=selu2 CHECKPOINT_EVERY=1000 
+Sat Mar 21 04:44:10 UTC 2026 | p2_elu2_6k | exit=1 | 8s | GPU=0 | MLP_ACT=elu2 CHECKPOINT_EVERY=1000 
+Sat Mar 21 04:44:11 UTC 2026 | p2_leaky05_13k_s42 | exit=1 | 9s | GPU=1 | MLP_ACT=leaky_relu2_05 SEED=42 CHECKPOINT_EVERY=1000 
+Sat Mar 21 04:44:11 UTC 2026 | p2_leaky05_13k_s1337 | exit=1 | 9s | GPU=2 | MLP_ACT=leaky_relu2_05 SEED=1337 CHECKPOINT_EVERY=1000 

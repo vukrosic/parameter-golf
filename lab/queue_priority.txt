@@ -1,0 +1,53 @@
+# Priority queue: highest-impact experiments first
+# Created from critique — gradfloor+leaky is the most promising untested combination
+
+# TOP PRIORITY: combination of two best findings (gradfloor + leaky)
+p2_leaky05_gradfloor_500 500 MLP_ACT=leaky05_gradfloor
+p2_leaky05_gradfloor_2k 2000 MLP_ACT=leaky05_gradfloor
+
+# 13k validation runs — decides submission
+p2_leaky05_13k_s42 13780 MLP_ACT=leaky_relu2_05 SEED=42 CHECKPOINT_EVERY=1000
+p2_leaky05_13k_s1337 13780 MLP_ACT=leaky_relu2_05 SEED=1337 CHECKPOINT_EVERY=1000
+
+# Remaining cross-hypothesis 500-step screening
+p2_x_relu18 500 MLP_ACT=relu18
+p2_x_relu22 500 MLP_ACT=relu22
+p2_x_x_silu 500 MLP_ACT=x_silu
+p2_x_x_tanh 500 MLP_ACT=x_tanh
+p2_x_shifted_relu2 500 MLP_ACT=shifted_relu2_neg
+p2_x_leaky05_lr06 500 MLP_ACT=leaky_relu2_05 MATRIX_LR=0.06
+p2_x_leaky05_lr032 500 MLP_ACT=leaky_relu2_05 MATRIX_LR=0.032
+p2_x_leaky05_warmup40 500 MLP_ACT=leaky_relu2_05 WARMUP_STEPS=40
+
+# Re-run incomplete experiments from wave 3
+p2_h3_linneg05 500 MLP_ACT=relu2_linneg05
+p2_h3_bipolar 500 MLP_ACT=bipolar_relu2
+
+# 2000-step validation runs
+p2_selu2_2k_s42 2000 MLP_ACT=selu2 SEED=42
+p2_selu2_2k_s1337 2000 MLP_ACT=selu2 SEED=1337
+p2_elu2_2k 2000 MLP_ACT=elu2
+p2_celu2_2k 2000 MLP_ACT=celu2
+p2_softplus2_2k 2000 MLP_ACT=softplus2
+p2_x_absx_2k 2000 MLP_ACT=x_absx
+p2_gelu2_2k 2000 MLP_ACT=gelu2
+p2_mish2_2k 2000 MLP_ACT=mish2
+p2_leaky01_2k 2000 MLP_ACT=leaky_relu2_01
+p2_leaky02_2k 2000 MLP_ACT=leaky_relu2_02
+p2_leaky08_2k 2000 MLP_ACT=leaky_relu2_08
+p2_linneg05_2k 2000 MLP_ACT=relu2_linneg05
+
+# 4000-step runs
+p2_selu2_4k_s42 4000 MLP_ACT=selu2 SEED=42
+p2_selu2_4k_s1337 4000 MLP_ACT=selu2 SEED=1337
+p2_x_absx_4k 4000 MLP_ACT=x_absx
+p2_elu2_4k 4000 MLP_ACT=elu2
+p2_gelu2_4k 4000 MLP_ACT=gelu2
+p2_leaky05_lr06_4k 4000 MLP_ACT=leaky_relu2_05 MATRIX_LR=0.06
+p2_leaky05_lr032_4k 4000 MLP_ACT=leaky_relu2_05 MATRIX_LR=0.032
+p2_linneg05_4k 4000 MLP_ACT=relu2_linneg05
+
+# 6000-step runs
+p2_x_absx_6k 6000 MLP_ACT=x_absx
+p2_selu2_6k 6000 MLP_ACT=selu2
+p2_elu2_6k 6000 MLP_ACT=elu2
