@@ -4,11 +4,31 @@ Only care about this on the main instance where you are running, these are rules
 
 ## Connection Details
 
+### GPU 1: RTX 3090 (remote)
 - **Host**: `proxy.us-ca-6.gpu-instance.novita.ai`
 - **Port**: `62248`
 - **User**: `root`
 - **Password**: `QVYvzTEyhLequoOMQEHJ`
-- **GPU**: NVIDIA RTX 3090 (24GB VRAM), same as local
+- **GPU**: NVIDIA RTX 3090 (24GB VRAM), ~2,702ms/step
+- **Helper**: `/tmp/remote.sh` (if created)
+
+### GPU 2: L40S
+- **Host**: `proxy.us-ca-6.gpu-instance.novita.ai`
+- **Port**: `62396`
+- **User**: `root`
+- **Password**: `ArtbZJu7nmE4VSwgBCQl`
+- **GPU**: NVIDIA L40S (48GB VRAM), ~950ms/step (torch.compile)
+- **Helper**: `/tmp/remote3.sh`
+- **Queue**: `lab/queue_gpu3.txt`
+
+### GPU 3: RTX 5090
+- **Host**: `proxy.us-ca-6.gpu-instance.novita.ai`
+- **Port**: `62132`
+- **User**: `root`
+- **Password**: `qxCByieIPNPkHGt9NaWF`
+- **GPU**: NVIDIA GeForce RTX 5090 (32GB VRAM), ~605ms/step (torch.compile)
+- **Helper**: `/tmp/remote4.sh`
+- **Queue**: `lab/queue_gpu4.txt`
 
 ## Critical Mistakes & Fixes
 
@@ -81,20 +101,26 @@ git add . && git commit -m "..." && git push origin lab
 
 ## Step Timing
 
-| GPU | Step avg (ms) | 500 steps | 2000 steps | 13780 steps |
+| GPU | Step avg (ms) | 500 steps | 4000 steps | 13780 steps |
 |-----|--------------|-----------|------------|-------------|
-| RTX 3090 (local) | ~2570 | ~21 min | ~86 min | ~9.8 hrs |
-| RTX 3090 (remote) | ~2570 (est.) | ~21 min | ~86 min | ~9.8 hrs |
-| L40S (reference) | ~3330 | ~28 min | ~111 min | ~12.7 hrs |
+| RTX 5090 (remote) | ~605 | ~5 min | ~40 min | ~2.3 hrs |
+| L40S (remote) | ~950 | ~8 min | ~63 min | ~3.6 hrs |
+| RTX 3090 (local) | ~2629 | ~22 min | ~175 min | ~10.1 hrs |
+| RTX 3090 (remote) | ~2702 | ~23 min | ~180 min | ~10.3 hrs |
 
 The wallclock budget in run_experiment.sh is calibrated for L40S (3.4s/step * 1.15 buffer).
-On 3090 this gives ~35% extra buffer, which is fine (step-based termination dominates).
+On faster GPUs this gives massive extra buffer, which is fine (step-based termination dominates).
 
 ## Environment Setup (done)
 
-Both machines have:
+All 4 machines have:
 - Python 3.11.13
-- torch 2.10.0
+- torch 2.10.0+cu128
 - All deps from requirements.txt
 - Data: fineweb10B_sp1024 (1 shard + val)
 - Branch: lab
+
+GPU capabilities:
+- RTX 3090: SM 8.6 (eager mode, no torch.compile)
+- L40S: SM 8.9 (torch.compile enabled)
+- RTX 5090: SM 12.0 (torch.compile enabled, Blackwell)
