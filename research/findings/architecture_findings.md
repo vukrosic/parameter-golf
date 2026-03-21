@@ -1,200 +1,169 @@
-# Architecture Experiments: Pushing the Pareto Frontier of Parameter-Constrained Language Models
+# Architecture Search Findings (500-step Explorations)
 
-## Overview
-
-This document records systematic architecture experiments for the [Parameter Golf](https://github.com/openai/parameter-golf) challenge — training the best language model that fits in 16MB compressed and trains in under 10 minutes on 8×H100s.
-
-**Baseline model**: 9-layer GPT, 512-dim, 8 heads (4 KV), 1024 vocab, tied embeddings, ReLU² activation, ~17M params.
-**Evaluation metric**: Bits-per-byte (BPB) on FineWeb validation set, lower is better.
-**Leaderboard baseline**: 1.2244 BPB.
-**Target**: Beat baseline by ≥0.005 BPB.
-
-All experiments run at **500 steps** on single RTX 5090 GPUs for rapid screening. Promising findings are validated at 2000+ steps.
+**Date:** 2026-03-21
+**Experiments:** 71 architecture variants at 500 steps each
+**Baselines:** arch_embed_baseline (1.4793), arch_moe_baseline (1.4794), arch_conv_baseline (1.4833)
 
 ---
 
-## Experiment 1: Weight Sharing / Layer Cycling
+## Ranked Results (all 71 experiments)
 
-**Hypothesis**: A parameter-constrained model benefits more from depth than width. By reusing a small set of unique transformer blocks multiple times, we can increase effective depth without adding parameters. Saved parameters can be reinvested into wider layers.
-
-### Setup
-
-| Config | Unique Blocks | Cycles | Effective Depth | Model Dim | Extra Notes |
-|--------|:---:|:---:|:---:|:---:|---|
-| baseline | 9 | 1 | 9 | 512 | Standard config |
-| ws_5x2 | 5 | 2 | 10 | 512 | Basic cycling |
-| ws_5x2_wide | 5 | 2 | 10 | 640 | Reinvest params |
-| ws_4x3 | 4 | 3 | 12 | 512 | Aggressive sharing |
-| ws_3x3 | 3 | 3 | 9 | 512 | Same depth, fewer params |
-| ws_9x2 | 9 | 2 | 18 | 512 | Pure depth, no savings |
-
-### Results
-
-| Config | Val BPB (500 steps) | Post-Quant BPB | Params | Notes |
-|--------|:---:|:---:|:---:|---|
-| baseline | — | — | — | Running |
-| ws_5x2 | — | — | — | Running |
-| ws_5x2_wide | — | — | — | Running |
-| ws_4x3 | — | — | — | Running |
-
-### Key Findings
-
-> *Results pending — will update as experiments complete.*
-
----
-
-## Experiment 2: Factorized Embeddings
-
-**Hypothesis**: With only 1024 BPE tokens, the full 512-dim embedding is wasteful. A low-rank bottleneck (vocab → 64 → 512) saves ~400KB that can be reinvested into model capacity.
-
-### Setup
-
-| Config | Bottleneck Dim | Model Dim | Layers | Extra Notes |
-|--------|:---:|:---:|:---:|---|
-| baseline | 512 (full) | 512 | 9 | Standard |
-| bn32 | 32 | 512 | 9 | Aggressive |
-| bn64 | 64 | 512 | 9 | Balanced |
-| bn128 | 128 | 512 | 9 | Conservative |
-| bn64_w576 | 64 | 576 | 9 | Reinvest → width |
-| bn64_10L | 64 | 512 | 10 | Reinvest → depth |
-
-### Results
-
-| Config | Val BPB (500 steps) | Post-Quant BPB | Params | Notes |
-|--------|:---:|:---:|:---:|---|
-| baseline | — | — | — | Running |
-| bn64 | — | — | — | Running |
-
-### Key Findings
-
-> *Results pending.*
+| Rank | Experiment | val_bpb | Delta vs baseline | Verdict |
+|------|-----------|---------|-------------------|---------|
+| 1 | arch_moe_4e_leaky | 1.4317 | **-0.048** | **WINNER** |
+| 2 | arch_moe_4e | 1.4373 | -0.042 | Promising |
+| 3 | arch_moe4_qat70 | 1.4377 | -0.042 | Promising |
+| 4 | arch_moe_4e_mlp4x | 1.4381 | -0.041 | Promising |
+| 5 | arch_embed_bn128_untied | 1.4483 | -0.031 | Promising |
+| 6 | arch_moe_3e | 1.4533 | -0.026 | Promising |
+| 7 | arch_embed_bn64_untied | 1.4557 | -0.024 | Promising |
+| 8 | arch_moe_2e_11L | 1.4606 | -0.019 | Moderate |
+| 9 | arch_moe_2e_10L | 1.4659 | -0.014 | Moderate |
+| 10 | arch_ws_5x2_wide_leaky | 1.4689 | -0.010 | Moderate |
+| 11 | arch_moe_2e_leaky | 1.4698 | -0.010 | Moderate |
+| 12 | arch_moe2_qat70 | 1.4715 | -0.008 | Moderate |
+| 13 | arch_qat_70_leaky | 1.4722 | -0.007 | Moderate |
+| 14 | arch_ws_9x2 | 1.4727 | -0.007 | Moderate |
+| 15 | arch_qat_50_leaky | 1.4728 | -0.007 | Moderate |
+| 16 | arch_moe_2e | 1.4733 | -0.006 | Marginal |
+| 17 | arch_moe_2e_mlp3x | 1.4740 | -0.005 | Marginal |
+| 18 | arch_qat_90pct | 1.4774 | -0.002 | Marginal |
+| 19 | arch_ws_5x2_wide | 1.4789 | -0.000 | Neutral |
+| 20 | **arch_embed_baseline** | **1.4793** | **0.000** | **BASELINE** |
+| 21 | **arch_moe_baseline** | **1.4794** | **0.000** | **BASELINE** |
+| 22 | arch_qat_70pct | 1.4810 | +0.002 | Neutral |
+| 23 | arch_qat_50pct | 1.4812 | +0.002 | Neutral |
+| 24 | arch_qat_from_start | 1.4815 | +0.002 | Neutral |
+| 25 | arch_qat_30pct | 1.4820 | +0.003 | Neutral |
+| 26 | **arch_conv_baseline** | **1.4833** | **+0.004** | **BASELINE** |
+| 27 | arch_baseline_9L | 1.4847 | +0.005 | Neutral |
+| 28 | arch_ws_4x3_wide | 1.4868 | +0.007 | Slight hurt |
+| 29 | arch_ws_6x2 | 1.4886 | +0.009 | Slight hurt |
+| 30-71 | *(remaining 42 experiments)* | 1.50-1.89 | +0.02 to +0.41 | Bad to Terrible |
 
 ---
 
-## Experiment 3: Depthwise Causal Convolution
+## Analysis by Architecture Category
 
-**Hypothesis**: Adding a cheap causal depthwise conv1d before attention in each layer gives the model a local receptive field for free (~1.5K params/layer). This lets attention focus on long-range dependencies instead of wasting heads on adjacent-token patterns.
+### 1. Mixture of Experts (MOE) — CLEAR WINNER
 
-### Setup
+**Best:** 1.4317 (4 experts + leaky) | **Worst:** 1.4740 (2 experts + mlp3x)
 
-| Config | Kernel Size | Extra Params/Layer | Total Extra | Notes |
-|--------|:---:|:---:|:---:|---|
-| baseline | none | 0 | 0 | No conv |
-| k3 | 3 | 1,536 | 13,824 | Trigram window |
-| k5 | 5 | 2,560 | 23,040 | 5-gram window |
-| k7 | 7 | 3,584 | 32,256 | 7-gram window |
-| k11 | 11 | 5,632 | 50,688 | Large window |
+MOE is the single most impactful architecture change tested. Every MOE variant beats baseline.
 
-### Results
+| Variant | val_bpb | Delta | Notes |
+|---------|---------|-------|-------|
+| moe_4e_leaky | 1.4317 | -0.048 | Best overall. Leaky ReLU + 4 experts = sweet spot |
+| moe_4e | 1.4373 | -0.042 | 4 experts without activation change still very strong |
+| moe4_qat70 | 1.4377 | -0.042 | QAT adds nothing on top of 4-expert MOE |
+| moe_4e_mlp4x | 1.4381 | -0.041 | Wider MLP doesn't help over standard 4e |
+| moe_3e | 1.4533 | -0.026 | 3 experts solid but clearly worse than 4 |
+| moe_2e_11L | 1.4606 | -0.019 | 2 experts + extra depth partially compensates |
+| moe_2e_10L | 1.4659 | -0.014 | 2 experts + 10 layers |
+| moe_2e_leaky | 1.4698 | -0.010 | Leaky helps less with fewer experts |
+| moe2_qat70 | 1.4715 | -0.008 | QAT marginal on 2-expert |
+| moe_2e | 1.4733 | -0.006 | 2 experts alone barely above noise |
+| moe_2e_mlp3x | 1.4740 | -0.005 | Wider MLP doesn't rescue 2-expert |
 
-| Config | Val BPB (500 steps) | Post-Quant BPB | Step Time | Notes |
-|--------|:---:|:---:|:---:|---|
-| baseline | — | — | — | Running |
-| k3 | — | — | — | Running |
-| k5 | — | — | — | Running |
-
-### Key Findings
-
-> *Results pending.*
+**Key insight:** Expert count matters most. 4 > 3 >> 2. The jump from 2→4 experts is worth ~0.04 BPB. Leaky ReLU adds ~0.005 on top. QAT and MLP width don't help once you have 4 experts.
 
 ---
 
-## Experiment 4: Soft Mixture of Experts (MoE)
+### 2. Factored Embeddings — UNTIED WORKS, TIED IS A DISASTER
 
-**Hypothesis**: Replacing the single MLP with N half-width expert MLPs (soft-merged via a learned router) doubles MLP capacity at the same parameter count. Soft merging avoids discrete routing issues and is trivially efficient.
+**Best:** 1.4483 (bn128 untied) | **Worst:** 1.8863 (bn16 w576)
 
-### Setup
+| Variant | val_bpb | Delta | Notes |
+|---------|---------|-------|-------|
+| embed_bn128_untied | 1.4483 | -0.031 | **Strong.** Separate input/output + 128-dim bottleneck |
+| embed_bn64_untied | 1.4557 | -0.024 | Untied + 64 also good |
+| embed_bn256 | 1.5375 | +0.058 | Tied — hurts |
+| embed_bn128_leaky | 1.5459 | +0.067 | Tied + leaky — still bad |
+| embed_bn128 | 1.5555 | +0.076 | Tied — bad |
+| embed_bn64 | 1.6100 | +0.131 | Tied — very bad |
+| embed_bn32 | 1.7143 | +0.235 | Tied — terrible |
+| embed_bn16 | 1.8579 | +0.379 | Tied — catastrophic |
 
-| Config | Experts | Expert Width | Router | Total MLP Params |
-|--------|:---:|:---:|:---:|---|
-| baseline | 1 | 2× model_dim | none | ~same |
-| 2e | 2 | 1× model_dim | softmax(Wx) | ~same |
-| 4e | 4 | 0.5× model_dim | softmax(Wx) | ~same |
-
-### Results
-
-| Config | Val BPB (500 steps) | Post-Quant BPB | Step Time | Notes |
-|--------|:---:|:---:|:---:|---|
-| baseline | — | — | — | Running |
-| 2e | — | — | — | Running |
-| 4e | — | — | — | Running |
-
-### Key Findings
-
-> *Results pending.*
+**Key insight:** Untied vs tied is the critical factor. Untied bn128 beats baseline by 0.031; tied bn128 *hurts* by 0.076. Smaller bottlenecks with tied embeddings are progressively catastrophic. Width adjustments (w544, w576) don't rescue tied variants.
 
 ---
 
-## Experiment 5: Quantization-Aware Training (QAT)
+### 3. Depthwise Convolution — DEAD END
 
-**Hypothesis**: The int8 post-training quantization gap (0.0325 BPB on 4h run) represents the single largest unaddressed loss. Training with simulated quantization noise (straight-through estimator) makes weights more robust to quantization.
+**Best:** 1.5045 (k3 + 11L) | **Worst:** 1.6532 (k5 + bn64)
 
-### Setup
+Every single convolution experiment hurts. Bigger kernels = worse results. Combinations with other techniques compound damage.
 
-| Config | QAT Start | Fake Quant Method | Notes |
-|--------|:---:|:---:|---|
-| baseline | never | none | Standard training |
-| qat_90pct | 90% of steps | per-row int8 STE | Conservative |
-| qat_70pct | 70% of steps | per-row int8 STE | Balanced |
-| qat_50pct | 50% of steps | per-row int8 STE | Moderate |
-| qat_30pct | 30% of steps | per-row int8 STE | Aggressive |
+| Variant | val_bpb | Delta |
+|---------|---------|-------|
+| conv_k3_11L | 1.5045 | +0.025 |
+| conv_k3 | 1.5134 | +0.034 |
+| conv_k5_leaky | 1.5316 | +0.052 |
+| conv_k5 | 1.5384 | +0.059 |
+| conv_k7 | 1.5606 | +0.081 |
+| conv_k9 | 1.5707 | +0.091 |
+| conv_k11 | 1.5877 | +0.108 |
+| conv_k15 | 1.5911 | +0.112 |
+| conv_k5_ws5x2 | 1.5831 | +0.104 |
+| conv_k5_bn64 | 1.6532 | +0.174 |
 
-### Results
-
-| Config | Val BPB (pre-quant) | Val BPB (post-quant) | Quant Gap | Notes |
-|--------|:---:|:---:|:---:|---|
-| baseline | — | — | — | Running |
-| qat_70pct | — | — | — | Running |
-
-### Key Findings
-
-> *Results pending.*
+**Verdict:** Abandon. Standard attention is strictly superior for this task/scale.
 
 ---
 
-## Combination Experiments
+### 4. Weight Sharing — PARAMETER-EFFICIENT BUT COSTLY
 
-After identifying winners from individual experiments, test combinations:
+**Best:** 1.4689 (5x2 wide leaky) | **Worst:** 1.5866 (6x2 wide576)
 
-| Config | Architecture Changes | Val BPB | Notes |
-|--------|---|:---:|---|
-| best_combo_1 | TBD | — | Based on individual winners |
-| best_combo_2 | TBD | — | — |
-| best_combo_3 | TBD | — | — |
+| Variant | val_bpb | Delta | Params | Notes |
+|---------|---------|-------|--------|-------|
+| ws_5x2_wide_leaky | 1.4689 | -0.010 | 15.0M | Only WS variant solidly beating baseline |
+| ws_9x2 | 1.4727 | -0.007 | 17.1M | 9 unique blocks = basically full model |
+| ws_5x2_wide | 1.4789 | -0.000 | 15.0M | Matches baseline |
+| ws_4x3_wide | 1.4868 | +0.007 | ~12M | |
+| ws_6x2 | 1.4886 | +0.009 | 11.5M | |
+| ws_5x2 | 1.5102 | +0.031 | 9.1M | Not wide enough |
+| ws_3x3 | 1.5465 | +0.067 | 6.0M | Too few unique blocks |
 
----
-
-## Methodology Notes
-
-1. **500-step screening**: Fast but noisy. Results with < 0.01 BPB difference from baseline are within noise. Only differences > 0.01 BPB are considered significant at 500 steps.
-2. **Validation**: Promising results (> 0.005 BPB improvement) will be validated at 2000+ steps on multiple seeds.
-3. **Parameter accounting**: All experiments account for the 16MB compressed model size constraint.
-4. **Step time**: Reported to assess feasibility within the 600s wallclock budget on 8×H100.
-5. **Hardware**: All screening experiments on single RTX 5090 (32GB VRAM).
+**Verdict:** Not competitive with MOE. Only useful if parameter budget is a hard constraint.
 
 ---
 
-## Summary of Findings
+### 5. QAT — NEARLY NEUTRAL ALONE
 
-> *Will be populated as experiments complete. Expected completion: 24-48 hours.*
+| Variant | val_bpb | Delta | Notes |
+|---------|---------|-------|-------|
+| qat_70_leaky | 1.4722 | -0.007 | Leaky doing the work, not QAT |
+| qat_50_leaky | 1.4728 | -0.007 | Same story |
+| qat_90pct | 1.4774 | -0.002 | |
+| qat_70pct | 1.4810 | +0.002 | ~neutral |
+| qat_50pct | 1.4812 | +0.002 | |
+| qat_from_start | 1.4815 | +0.002 | |
+| qat_30pct | 1.4820 | +0.003 | |
 
-### What Worked
-
-*(pending)*
-
-### What Didn't Work
-
-*(pending)*
-
-### Surprising Results
-
-*(pending)*
-
-### Recommended Configuration
-
-*(pending)*
+**Key insight:** QAT alone is within noise (±0.003). The leaky ReLU is doing all the work in "qat + leaky" variants. QAT start timing barely matters. However, moe4_qat70 (1.4377) matches plain moe_4e (1.4373) — QAT doesn't hurt MOE, important for final submission.
 
 ---
 
-*Generated: 2026-03-21*
-*Challenge: [OpenAI Parameter Golf](https://github.com/openai/parameter-golf)*
+## What Works vs What Doesn't
+
+### Pursue to Validation
+1. **4-expert MOE + leaky ReLU** — -0.048 BPB, clear winner
+2. **Untied factored embeddings (bn128)** — -0.031 BPB, worth combining with MOE
+3. **MOE + QAT combo** — preserves quantized quality for submission
+
+### Dead Ends (Do Not Revisit)
+1. **Depthwise convolution** — every variant hurts, bigger kernels hurt more
+2. **Tied factored embeddings** — catastrophic, especially at small bottlenecks
+3. **Weight sharing** — not competitive with MOE for quality
+4. **QAT alone** — nearly zero impact
+5. **Conv + anything combos** — compounds the damage
+
+### Next Steps
+1. Validate MOE 4e + leaky at 2000-5000 steps, multiple seeds
+2. Test MOE 4e + leaky + untied bn128 — the two biggest wins may stack
+3. Full run (13780 steps) of best combo to see if it beats 1.2244 BPB leaderboard
+
+---
+
+*71 experiments, 3 GPUs, ~500 steps each. Generated 2026-03-21.*

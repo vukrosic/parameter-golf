@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.50608233,
+    "val_loss": 2.54295693
+  },
+  "generated_at_utc": "2026-03-21T17:46:20+00:00",
+  "int8_zlib_model_bytes": 7539935,
+  "int8_zlib_total_submission_bytes": 7621588,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.5051,
+    "val_loss": 2.5412
+  },
+  "run_id": "arch_moe2_ws5x2_leaky"
+}
