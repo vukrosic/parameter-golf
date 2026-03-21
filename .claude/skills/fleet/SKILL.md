@@ -1,6 +1,6 @@
 ---
 name: fleet
-description: Show GPU fleet status — all GPUs, their state (training/idle/offline), current experiment, step progress, loss, cost burn rate, and budget remaining. Use when the user wants to see what GPUs are doing, check fleet health, or monitor experiments.
+description: Show GPU fleet status — all GPUs, their state (training/idle/offline), current experiment, step progress, loss, cost burn rate, and budget remaining.
 ---
 
 # GPU Fleet Status
@@ -9,28 +9,30 @@ Show a live snapshot of all GPU instances in the parameter-golf fleet.
 
 ## Instructions
 
-1. Source the GPU credentials from `lab/gpu_creds.sh` in the project root `/root/parameter-golf/`.
+1. Run the fleet status script to get a quick overview:
+   ```bash
+   bash .claude/skills/fleet/scripts/fleet_status.sh
+   ```
 
-2. Run `bash lab/watch_all_gpus.sh` from `/root/parameter-golf/` to get the full fleet status table. This script already handles:
-   - SSH into all remote GPUs in parallel
-   - nvidia-smi stats (utilization, temp, power)
-   - Training progress (step, loss, avg step time)
-   - Cost tracking against $40 budget
-   - Colorized output
+2. For richer monitoring with cost tracking and loss curves, run:
+   ```bash
+   bash lab/watch_all_gpus.sh
+   ```
+   Present the data to the user in a clean table.
 
-3. Present the output to the user as-is (it's already well-formatted).
+3. If the user asks about a specific GPU, use the SSH helper to get detail:
+   ```bash
+   bash .claude/skills/fleet/scripts/ssh_run.sh <port> <pass> "tail -20 logs/*.txt; nvidia-smi"
+   ```
+   Get the port/pass by running `bash .claude/skills/fleet/scripts/discover_gpus.sh` and finding the matching GPU name.
 
-4. If the user asks about a specific GPU, also SSH into that machine to get more detail:
-   - `tail -20` the latest log file in `logs/` to show recent training progress
-   - Check what experiment is running via `ps aux | grep train_gpt`
-   - Check disk usage with `df -h /root`
-
-5. If any GPU shows as OFFLINE or ERROR, suggest troubleshooting steps:
-   - Check if the instance is still running on Novita AI
+4. If any GPU shows OFFLINE, suggest:
+   - Check if the instance is still running on the cloud provider
    - Try SSH manually to see the error
    - Check if the experiment crashed (look at log tail)
 
-## Key Files
-- `lab/watch_all_gpus.sh` — Main monitoring script
-- `lab/gpu_creds.sh` — SSH credentials (git-ignored)
-- `lab/GPU_BENCHMARKS.md` — Performance reference
+## Key Scripts
+- `scripts/fleet_status.sh` — Quick fleet overview
+- `scripts/discover_gpus.sh` — List all GPUs from gpu_creds.sh dynamically
+- `scripts/ssh_run.sh` — SSH into any GPU by port/pass
+- `lab/watch_all_gpus.sh` — Full monitoring with cost tracking

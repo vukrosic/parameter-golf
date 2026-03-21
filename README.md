@@ -188,20 +188,3 @@ This repository adapts code from `modded-nanogpt`, see [THIRD_PARTY_NOTICES.md](
 
 
 --
-
-# Install tmux (if not already installed)
-sudo apt install tmux -y        # Debian/Ubuntu
-# sudo yum install tmux -y      # RHEL/CentOS
-
-# Install Claude Code (if not already installed)
-curl -fsSL https://claude.ai/install.sh | bash
-
-
-tmux new-session -s claude 'claude --dangerously-skip-permissions'
-
-
-tmux ls
-
-
-# Reattach to your session
-tmux attach -t claude

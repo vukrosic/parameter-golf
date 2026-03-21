@@ -1,52 +1,36 @@
 ---
 name: kill-exp
-description: Stop a running experiment on a specific GPU and free it for new work. Use when the user wants to cancel, stop, abort, or kill an experiment, or free up a GPU.
+description: Stop a running experiment on a specific GPU and free it for new work.
 ---
 
 # Kill Experiment
 
-Stop a running experiment on a GPU instance.
-
 ## Instructions
 
-1. Source credentials from `lab/gpu_creds.sh` in `/root/parameter-golf/`.
-
-2. If the user specifies an experiment name, find which GPU it's running on:
-   - SSH into each GPU and check `ps aux | grep train_gpt`
-   - Match the experiment name from the process arguments or log file names
-
-3. If the user specifies a GPU name (e.g., "L40S", "5090"), target that GPU directly.
-
-4. **Before killing**, show the user:
-   - What experiment is running
-   - Current step progress (from latest log line)
-   - How long it's been running
-   - Ask for confirmation
-
-5. Kill the experiment:
-   ```bash
-   # Kill the training process and any child processes
-   pkill -f "train_gpt.py"
-   # Or more targeted:
-   kill <PID>
-   ```
-
-6. Also kill the queue runner if one is active:
-   ```bash
-   pkill -f "run_queue.sh"
-   pkill -f "run_experiment.sh"
-   ```
-
-7. Verify the process is stopped: `ps aux | grep train_gpt | grep -v grep`
-
-8. Report back: experiment stopped, GPU is now free.
-
-## SSH Pattern
+### Check what's running first
 ```bash
-sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -p $PORT root@$HOST "cd /root/parameter-golf && <cmd>"
+bash .claude/skills/kill-exp/scripts/kill_experiment.sh <GPU_NAME>
+```
+This shows the running process and recent log output without killing anything.
+
+### Kill with confirmation
+After showing the user what's running, ask for confirmation. Then:
+```bash
+bash .claude/skills/kill-exp/scripts/kill_experiment.sh <GPU_NAME> --force
 ```
 
-## Important
-- Always confirm with the user before killing — they may have been running something important
-- If partial results exist, suggest collecting them first with `/collect`
-- The killed experiment can be re-run later since `run_queue.sh` skips completed experiments (those with `results/<name>/train.log`)
+### If user specifies an experiment name instead of GPU
+Search across all GPUs:
+```bash
+bash .claude/skills/fleet/scripts/discover_gpus.sh | while read name port pass; do
+    bash .claude/skills/fleet/scripts/ssh_run.sh "$port" "$pass" "ps aux | grep <exp_name> | grep -v grep"
+done
+```
+
+### Important
+- Always confirm with the user before killing
+- If partial results exist, suggest `/collect` first
+- Killed experiments can be re-run (run_queue.sh skips completed ones)
+
+## Key Scripts
+- `scripts/kill_experiment.sh` — Show running process and optionally kill
