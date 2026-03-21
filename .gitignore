@@ -24,3 +24,5 @@ infra/gpu_sync_cron.sh
 infra/gpu_sync_loop.sh
 infra/watch_all_gpus.sh
 /my-life/
+debate/creds.sh
+debate/rounds/
