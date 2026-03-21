@@ -1,13 +1,11 @@
-# Local GPU (RTX 3090) — Architecture sweep + QAT
+# Local GPU — Activation experiments (highest priority first)
 # Format: <name> <steps> [ENV_VAR=value ...]
 
-# Phase 3: Architecture sweep (500 steps each, ~21 min)
-p3_12x448 500 NUM_LAYERS=12 MODEL_DIM=448 NUM_HEADS=8 NUM_KV_HEADS=4
-p3_7x576 500 NUM_LAYERS=7 MODEL_DIM=576 NUM_HEADS=8 NUM_KV_HEADS=4
-p3_15x384 500 NUM_LAYERS=15 MODEL_DIM=384 NUM_HEADS=8 NUM_KV_HEADS=4
-p3_6x640 500 NUM_LAYERS=6 MODEL_DIM=640 NUM_HEADS=8 NUM_KV_HEADS=4
-
-# Phase 3: Head configs (500 steps, ~21 min)
-p3_heads_8_8 500 NUM_HEADS=8 NUM_KV_HEADS=8
-p3_heads_16_8 500 NUM_HEADS=16 NUM_KV_HEADS=8
-p3_heads_8_2 500 NUM_HEADS=8 NUM_KV_HEADS=2
+# 1. Novel combination: leaky(0.5)² + gradfloor (500 step screen)
+act_leaky05_gradfloor_500 500 MLP_ACT=leaky05_gradfloor
+# 2. If above looks good, extend to 2000
+act_leaky05_gradfloor_2000 2000 MLP_ACT=leaky05_gradfloor
+# 3. leaky(0.8)² validation at 4000 steps (is the 500-step lead real?)
+act_leaky08_4000 4000 MLP_ACT=leaky_relu2_08
+# 4. clamped16 validation at 4000 (beat relu² at 500 by 0.008)
+act_clamped16_4000 4000 MLP_ACT=relu2_clamped16
