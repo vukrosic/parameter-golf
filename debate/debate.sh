@@ -1,21 +1,13 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-# Multi-Agent Research Debate
+# Multi-Agent Research Debate (MiniMax M2.7 via Novita)
 # ═══════════════════════════════════════════════════════════════════════
-# Three LLMs with distinct personas independently review experiments,
-# cross-examine each other, and a final synthesis extracts action items.
+# Three MiniMax instances with distinct personas debate experiments.
 #
 # Usage:
-#   bash debate/debate.sh                          # default: full review
+#   bash debate/debate.sh                          # full 3-round debate
 #   bash debate/debate.sh "MoE budget fitting"     # focused topic
-#   bash debate/debate.sh "activation functions" 1  # single round (no debate)
-#
-# Agents:
-#   Claude (Anthropic)  → The Architect (structure & parameter budgets)
-#   MiniMax M2.7        → The Skeptic (rigor & statistical validity)
-#   Kimi K2             → The Explorer (creative connections & novel ideas)
-#
-# Output: debate/rounds/<timestamp>/
+#   bash debate/debate.sh "activation functions" 1  # single round only
 # ═══════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -30,31 +22,24 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUT_DIR="debate/rounds/$TIMESTAMP"
 mkdir -p "$OUT_DIR"
 
-# Save debate metadata
-cat > "$OUT_DIR/meta.json" <<EOF
-{
-  "topic": "$TOPIC",
-  "rounds": $ROUNDS,
-  "timestamp": "$TIMESTAMP",
-  "agents": {
-    "architect": {"provider": "anthropic", "model": "claude"},
-    "skeptic": {"provider": "novita", "model": "minimax/minimax-m2.7"},
-    "explorer": {"provider": "novita", "model": "moonshotai/kimi-k2-instruct"}
-  }
-}
-EOF
+# All agents use Novita
+export ANTHROPIC_BASE_URL="$NOVITA_BASE_URL"
+export ANTHROPIC_AUTH_TOKEN="$NOVITA_KEY"
+export ANTHROPIC_MODEL="$DEBATE_MODEL"
+export ANTHROPIC_SMALL_FAST_MODEL="$DEBATE_MODEL"
 
 echo "╔═══════════════════════════════════════════════╗"
 echo "║         MULTI-AGENT RESEARCH DEBATE           ║"
 echo "╠═══════════════════════════════════════════════╣"
-echo "║ Topic: $TOPIC"
+echo "║ Topic: $(echo "$TOPIC" | head -c 43)"
 echo "║ Rounds: $ROUNDS"
+echo "║ Model: $DEBATE_MODEL (all agents)"
 echo "║ Output: $OUT_DIR/"
 echo "║                                               ║"
 echo "║ Agents:                                       ║"
-echo "║   Architect (Claude)  — structure & budgets   ║"
-echo "║   Skeptic   (MiniMax) — rigor & evidence      ║"
-echo "║   Explorer  (Kimi)    — creativity & lit       ║"
+echo "║   Architect — structure & parameter budgets   ║"
+echo "║   Skeptic   — rigor & statistical evidence    ║"
+echo "║   Explorer  — creativity & literature         ║"
 echo "╚═══════════════════════════════════════════════╝"
 echo ""
 
@@ -64,11 +49,9 @@ PERSONA_ARCHITECT=$(cat debate/personas/architect.md)
 PERSONA_SKEPTIC=$(cat debate/personas/skeptic.md)
 PERSONA_EXPLORER=$(cat debate/personas/explorer.md)
 
-# ─── Build context instructions ──────────────────────────────────────
-# Each agent gets Claude Code tools, so they read files themselves.
-# We tell them WHAT to read, not dump the content.
+# ─── Context instructions for all agents ─────────────────────────────
 
-CONTEXT_INSTRUCTIONS="
+CONTEXT="
 ## Project Context
 You are working on the Parameter Golf challenge: train the best 16MB language model in <10 min on 8xH100s. Scored by val_bpb (bits per byte, lower = better). Current leaderboard: 1.2244 BPB. Our best: 1.2498 BPB.
 
@@ -76,88 +59,71 @@ You are working on the Parameter Golf challenge: train the best 16MB language mo
 $TOPIC
 
 ## Required Reading (use your file-reading tools)
-1. Read KNOWLEDGE.md — this is the source of truth for proven facts and failed approaches
-2. Read results in results/explore/ and results/validate/ — look at summary.txt files for BPB scores
+1. Read KNOWLEDGE.md — source of truth for proven facts and failed approaches
+2. Read results in results/explore/ and results/validate/ — look at summary.txt files
 3. Read queues/active.txt — what's currently queued
 4. Skim train_gpt.py lines 39-108 — the Hyperparameters class (all tunable env vars)
 
 ## Rules
-- NEVER propose something listed in KNOWLEDGE.md's 'Failed Approaches' section without acknowledging it failed and explaining why this time is different
-- All experiment proposals must include exact env var configs ready for: infra/run_experiment.sh <name> <steps>
+- NEVER propose something in KNOWLEDGE.md's 'Failed Approaches' without explaining why this time is different
+- All experiments must include exact env var configs for: infra/run_experiment.sh <name> <steps>
 - Respect the 16 MB int8 zlib-compressed submission limit
-- The noise floor at 500 steps is ~0.003 BPB. Don't claim significance below that.
-- Name experiments in snake_case describing what's being tested
+- Noise floor at 500 steps is ~0.003 BPB. Don't claim significance below that.
+- Name experiments in snake_case
 "
 
-# ─── Helper: run an agent ─────────────────────────────────────────────
-
-run_agent() {
-    local name="$1"
-    local persona="$2"
-    local prompt="$3"
-    local output_file="$4"
-    local provider="${5:-anthropic}"
-
-    case "$provider" in
-        anthropic)
-            claude --print -p "$persona
-
-$prompt" > "$output_file" 2>/dev/null
-            ;;
-        novita-minimax)
-            ANTHROPIC_BASE_URL="$NOVITA_BASE_URL" \
-            ANTHROPIC_AUTH_TOKEN="$NOVITA_KEY" \
-            ANTHROPIC_MODEL="$NOVITA_MODEL_MINIMAX" \
-            ANTHROPIC_SMALL_FAST_MODEL="$NOVITA_MODEL_MINIMAX" \
-            claude --print -p "$persona
-
-$prompt" > "$output_file" 2>/dev/null
-            ;;
-        novita-kimi)
-            ANTHROPIC_BASE_URL="$NOVITA_BASE_URL" \
-            ANTHROPIC_AUTH_TOKEN="$NOVITA_KEY" \
-            ANTHROPIC_MODEL="$NOVITA_MODEL_KIMI" \
-            ANTHROPIC_SMALL_FAST_MODEL="$NOVITA_MODEL_KIMI" \
-            claude --print -p "$persona
-
-$prompt" > "$output_file" 2>/dev/null
-            ;;
-    esac
-}
-
 # ═══════════════════════════════════════════════════════════════════════
-# ROUND 1: Independent Reviews
+# ROUND 1: Independent Reviews (parallel)
 # ═══════════════════════════════════════════════════════════════════════
 
 echo "━━━ ROUND 1: Independent Reviews ━━━"
 echo ""
 
-ROUND1_PROMPT="$CONTEXT_INSTRUCTIONS
+R1_PROMPT="$CONTEXT
 
 This is Round 1 — your independent review. No other agents have spoken yet. Read the files listed above and provide your full analysis following your output format."
 
-echo "  Launching Architect (Claude)..."
-run_agent "architect" "$PERSONA_ARCHITECT" "$ROUND1_PROMPT" "$OUT_DIR/r1_architect.md" "anthropic" &
-PID_ARCH=$!
+# Log stderr to files so we can debug failures
+echo "  Launching Architect..."
+claude --print -p "$PERSONA_ARCHITECT
 
-echo "  Launching Skeptic (MiniMax M2.7)..."
-run_agent "skeptic" "$PERSONA_SKEPTIC" "$ROUND1_PROMPT" "$OUT_DIR/r1_skeptic.md" "novita-minimax" &
-PID_SKEP=$!
+$R1_PROMPT" > "$OUT_DIR/r1_architect.md" 2>"$OUT_DIR/r1_architect.err" &
+PID1=$!
 
-echo "  Launching Explorer (Kimi K2)..."
-run_agent "explorer" "$PERSONA_EXPLORER" "$ROUND1_PROMPT" "$OUT_DIR/r1_explorer.md" "novita-kimi" &
-PID_EXPL=$!
+echo "  Launching Skeptic..."
+claude --print -p "$PERSONA_SKEPTIC
+
+$R1_PROMPT" > "$OUT_DIR/r1_skeptic.md" 2>"$OUT_DIR/r1_skeptic.err" &
+PID2=$!
+
+echo "  Launching Explorer..."
+claude --print -p "$PERSONA_EXPLORER
+
+$R1_PROMPT" > "$OUT_DIR/r1_explorer.md" 2>"$OUT_DIR/r1_explorer.err" &
+PID3=$!
 
 echo ""
-echo "  Waiting for all agents..."
-wait $PID_ARCH && echo "  ✓ Architect done ($(wc -l < "$OUT_DIR/r1_architect.md") lines)" || echo "  ✗ Architect failed"
-wait $PID_SKEP && echo "  ✓ Skeptic done ($(wc -l < "$OUT_DIR/r1_skeptic.md") lines)" || echo "  ✗ Skeptic failed"
-wait $PID_EXPL && echo "  ✓ Explorer done ($(wc -l < "$OUT_DIR/r1_explorer.md") lines)" || echo "  ✗ Explorer failed"
+echo "  Waiting for Round 1... (tail -f $OUT_DIR/r1_*.md to watch live)"
+echo ""
+
+# Live progress monitor: print line counts every 10s
+while kill -0 $PID1 2>/dev/null || kill -0 $PID2 2>/dev/null || kill -0 $PID3 2>/dev/null; do
+    ARCH_N=$(wc -l < "$OUT_DIR/r1_architect.md" 2>/dev/null || echo 0)
+    SKEP_N=$(wc -l < "$OUT_DIR/r1_skeptic.md" 2>/dev/null || echo 0)
+    EXPL_N=$(wc -l < "$OUT_DIR/r1_explorer.md" 2>/dev/null || echo 0)
+    printf "\r  Architect: %4s lines | Skeptic: %4s lines | Explorer: %4s lines" "$ARCH_N" "$SKEP_N" "$EXPL_N"
+    sleep 10
+done
+echo ""
+
+wait $PID1 && echo "  ✓ Architect done ($(wc -l < "$OUT_DIR/r1_architect.md") lines)" || echo "  ✗ Architect failed (see $OUT_DIR/r1_architect.err)"
+wait $PID2 && echo "  ✓ Skeptic done ($(wc -l < "$OUT_DIR/r1_skeptic.md") lines)" || echo "  ✗ Skeptic failed (see $OUT_DIR/r1_skeptic.err)"
+wait $PID3 && echo "  ✓ Explorer done ($(wc -l < "$OUT_DIR/r1_explorer.md") lines)" || echo "  ✗ Explorer failed (see $OUT_DIR/r1_explorer.err)"
 
 [ "$ROUNDS" -le 1 ] && { echo ""; echo "Single-round mode. Outputs in $OUT_DIR/"; exit 0; }
 
 # ═══════════════════════════════════════════════════════════════════════
-# ROUND 2: Cross-Examination
+# ROUND 2: Cross-Examination (parallel)
 # ═══════════════════════════════════════════════════════════════════════
 
 echo ""
@@ -165,10 +131,7 @@ echo "━━━ ROUND 2: Cross-Examination ━━━"
 echo ""
 
 build_cross_prompt() {
-    local agent_name="$1"
-    shift
     local others_text=""
-
     for other_file in "$@"; do
         local other_name
         other_name=$(basename "$other_file" .md | sed 's/r1_//')
@@ -182,40 +145,43 @@ $(cat "$other_file")
         fi
     done
 
-    echo "This is Round 2 — Cross-Examination. You have read the other agents' Round 1 reviews below.
+    echo "This is Round 2 — Cross-Examination. Below are the other agents' Round 1 reviews.
 
 Your job:
 1. **Challenge**: Pick the weakest claim from each other agent and explain why it's wrong or unsupported
 2. **Support**: Pick the strongest claim from each other agent and add evidence for it
-3. **Revise**: Update your own top 3 experiment proposals based on what you've learned. Did another agent change your mind? Say so explicitly.
-4. **Disagree**: State your single biggest disagreement with the group — the hill you'd die on
+3. **Revise**: Update your top 3 experiment proposals based on what you've learned
+4. **Hill to die on**: State your single biggest disagreement with the group
 
 $others_text"
 }
 
-# Architect sees Skeptic + Explorer
-CROSS_ARCH=$(build_cross_prompt "architect" "$OUT_DIR/r1_skeptic.md" "$OUT_DIR/r1_explorer.md")
-echo "  Architect responding to Skeptic & Explorer..."
-run_agent "architect" "$PERSONA_ARCHITECT" "$CROSS_ARCH" "$OUT_DIR/r2_architect.md" "anthropic" &
-PID_ARCH=$!
+CROSS_ARCH=$(build_cross_prompt "$OUT_DIR/r1_skeptic.md" "$OUT_DIR/r1_explorer.md")
+echo "  Architect responding..."
+claude --print -p "$PERSONA_ARCHITECT
 
-# Skeptic sees Architect + Explorer
-CROSS_SKEP=$(build_cross_prompt "skeptic" "$OUT_DIR/r1_architect.md" "$OUT_DIR/r1_explorer.md")
-echo "  Skeptic responding to Architect & Explorer..."
-run_agent "skeptic" "$PERSONA_SKEPTIC" "$CROSS_SKEP" "$OUT_DIR/r2_skeptic.md" "novita-minimax" &
-PID_SKEP=$!
+$CROSS_ARCH" > "$OUT_DIR/r2_architect.md" 2>/dev/null &
+PID1=$!
 
-# Explorer sees Architect + Skeptic
-CROSS_EXPL=$(build_cross_prompt "explorer" "$OUT_DIR/r1_architect.md" "$OUT_DIR/r1_skeptic.md")
-echo "  Explorer responding to Architect & Skeptic..."
-run_agent "explorer" "$PERSONA_EXPLORER" "$CROSS_EXPL" "$OUT_DIR/r2_explorer.md" "novita-kimi" &
-PID_EXPL=$!
+CROSS_SKEP=$(build_cross_prompt "$OUT_DIR/r1_architect.md" "$OUT_DIR/r1_explorer.md")
+echo "  Skeptic responding..."
+claude --print -p "$PERSONA_SKEPTIC
+
+$CROSS_SKEP" > "$OUT_DIR/r2_skeptic.md" 2>/dev/null &
+PID2=$!
+
+CROSS_EXPL=$(build_cross_prompt "$OUT_DIR/r1_architect.md" "$OUT_DIR/r1_skeptic.md")
+echo "  Explorer responding..."
+claude --print -p "$PERSONA_EXPLORER
+
+$CROSS_EXPL" > "$OUT_DIR/r2_explorer.md" 2>/dev/null &
+PID3=$!
 
 echo ""
 echo "  Waiting for Round 2..."
-wait $PID_ARCH && echo "  ✓ Architect R2 done" || echo "  ✗ Architect R2 failed"
-wait $PID_SKEP && echo "  ✓ Skeptic R2 done" || echo "  ✗ Skeptic R2 failed"
-wait $PID_EXPL && echo "  ✓ Explorer R2 done" || echo "  ✗ Explorer R2 failed"
+wait $PID1 && echo "  ✓ Architect R2 done" || echo "  ✗ Architect R2 failed"
+wait $PID2 && echo "  ✓ Skeptic R2 done" || echo "  ✗ Skeptic R2 failed"
+wait $PID3 && echo "  ✓ Explorer R2 done" || echo "  ✗ Explorer R2 failed"
 
 [ "$ROUNDS" -le 2 ] && { echo ""; echo "Two-round mode. Outputs in $OUT_DIR/"; exit 0; }
 
@@ -227,16 +193,14 @@ echo ""
 echo "━━━ ROUND 3: Synthesis ━━━"
 echo ""
 
-# Collect all debate content
 ALL_CONTENT=""
 for ROUND in r1 r2; do
     for AGENT in architect skeptic explorer; do
         F="$OUT_DIR/${ROUND}_${AGENT}.md"
         if [ -s "$F" ]; then
-            local_label="${ROUND^^}: THE $(echo "$AGENT" | tr '[:lower:]' '[:upper:]')"
             ALL_CONTENT="$ALL_CONTENT
 ╔══════════════════════════════════════╗
-  $local_label
+  ${ROUND^^}: THE $(echo "$AGENT" | tr '[:lower:]' '[:upper:]')
 ╚══════════════════════════════════════╝
 $(cat "$F")
 "
@@ -244,58 +208,49 @@ $(cat "$F")
     done
 done
 
-SYNTH_PROMPT="You are the Synthesis Agent. Three AI researchers with different specialties — an Architect (structure), a Skeptic (rigor), and an Explorer (creativity) — debated over 2 rounds about the Parameter Golf challenge.
+SYNTH_PROMPT="You are the Synthesis Agent. Three AI researchers — an Architect (structure), a Skeptic (rigor), and an Explorer (creativity) — debated over 2 rounds about the Parameter Golf challenge.
 
-Your job is to produce the FINAL ACTIONABLE OUTPUT. This is what the human researcher will actually use.
+Produce the FINAL ACTIONABLE OUTPUT the human researcher will use.
 
-Here is the complete debate:
 $ALL_CONTENT
 
 ═══════════════════════════════════════
-Produce this exact structure:
+Output this exact structure:
 ═══════════════════════════════════════
 
 ## Consensus
-What all three agents agree on. These are high-confidence bets.
+What all three agents agree on. High-confidence bets.
 
 ## Key Disputes
-The unresolved disagreements. For each:
-- What's the disagreement
-- Which agent has stronger evidence
-- How to resolve it (what experiment would settle it)
+Unresolved disagreements. For each: what, who has stronger evidence, what experiment settles it.
 
 ## Experiment Queue (RANKED)
-Top 5-8 experiments, ranked by expected impact / cost ratio.
+Top 5-8 experiments, ranked by expected impact / cost.
 
-For EACH experiment:
+For EACH:
 \`\`\`bash
-# <experiment_name> — <one-line description>
+# <name> — <description>
 # Hypothesis: <what we expect>
-# Proposed by: <which agent(s)>
+# Proposed by: <agent(s)>
 # Risk: <what could go wrong>
-# Steps: <recommended step count for this stage>
-ENV_VAR1=value ENV_VAR2=value infra/run_experiment.sh experiment_name <steps>
+ENV=val ENV2=val infra/run_experiment.sh name <steps>
 \`\`\`
 
 ## Do NOT Run
-Experiments that were proposed but rejected during debate, and why.
+Rejected proposals and why.
 
 ## Strategic Assessment
-One paragraph: where are we relative to the leaderboard, what's the most promising path to closing the gap, and what's our biggest risk?"
+One paragraph: position vs leaderboard, most promising path, biggest risk."
 
-echo "  Synthesizing debate..."
-run_agent "synthesis" "" "$SYNTH_PROMPT" "$OUT_DIR/synthesis.md" "anthropic"
+echo "  Synthesizing..."
+claude --print -p "$SYNTH_PROMPT" > "$OUT_DIR/synthesis.md" 2>/dev/null
 echo "  ✓ Synthesis done"
 
 # ═══════════════════════════════════════════════════════════════════════
-# Output
-# ═══════════════════════════════════════════════════════════════════════
-
 echo ""
 echo "╔═══════════════════════════════════════════════╗"
 echo "║              DEBATE COMPLETE                  ║"
 echo "╠═══════════════════════════════════════════════╣"
-echo "║ Files:                                        ║"
 for F in "$OUT_DIR"/*.md; do
     SIZE=$(wc -l < "$F")
     NAME=$(basename "$F")
