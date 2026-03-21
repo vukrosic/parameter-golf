@@ -98,6 +98,14 @@ class Hyperparameters:
     act_power = float(os.environ.get("ACT_POWER", 2.0))
     act_gate_floor = float(os.environ.get("ACT_GATE_FLOOR", 0.5))
 
+    # Architecture experiments (0 = disabled for all)
+    num_unique_blocks = int(os.environ.get("NUM_UNIQUE_BLOCKS", "0"))
+    num_cycles = int(os.environ.get("NUM_CYCLES", "1"))
+    embed_bottleneck = int(os.environ.get("EMBED_BOTTLENECK", "0"))
+    conv_kernel = int(os.environ.get("CONV_KERNEL", "0"))
+    num_experts = int(os.environ.get("NUM_EXPERTS", "0"))
+    qat_start_frac = float(os.environ.get("QAT_START_FRAC", "0.0"))
+
 # -----------------------------
 # MUON OPTIMIZER 
 # -----------------------------
@@ -520,9 +528,14 @@ class RMSNorm(nn.Module):
 
 class CastedLinear(nn.Linear):
     # Keep weights in fp32 for optimizer/state quality, cast at matmul time for bf16 compute.
+    qat_enabled = False
     def forward(self, x: Tensor) -> Tensor:
+        w = self.weight
+        if self.training and CastedLinear.qat_enabled and w.ndim == 2:
+            scale = w.abs().amax(dim=-1, keepdim=True).clamp_min(1.0 / 127.0) / 127.0
+            w = w + ((w / scale).round().clamp(-127, 127) * scale - w).detach()
         bias = self.bias.to(x.dtype) if self.bias is not None else None
-        return F.linear(x, self.weight.to(x.dtype), bias)
+        return F.linear(x, w.to(x.dtype), bias)
 
 
 def restore_low_dim_params_to_fp32(module: nn.Module) -> None:
@@ -1102,6 +1115,18 @@ class MLP(nn.Module):
             raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
 
 
+class SoftMoE(nn.Module):
+    """Soft mixture of experts: weighted average of expert outputs. No discrete routing."""
+    def __init__(self, dim: int, mlp_mult: int, num_experts: int, **mlp_kwargs):
+        super().__init__()
+        expert_mult = max(1, mlp_mult // num_experts)
+        self.experts = nn.ModuleList([MLP(dim, expert_mult, **mlp_kwargs) for _ in range(num_experts)])
+        self.router = CastedLinear(dim, num_experts, bias=False)
+    def forward(self, x: Tensor) -> Tensor:
+        w = self.router(x).softmax(dim=-1)  # (B, S, E)
+        return sum(w[..., i:i+1] * self.experts[i](x) for i in range(len(self.experts)))
+
+
 class Block(nn.Module):
     def __init__(
         self,
@@ -1115,19 +1140,29 @@ class Block(nn.Module):
         mlp_act: str = "relu2",
         act_power: float = 2.0,
         act_gate_floor: float = 0.5,
+        conv_kernel: int = 0,
+        num_experts: int = 0,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init, v_gate=v_gate)
-        self.mlp = MLP(dim, mlp_mult, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
+        if num_experts > 0:
+            self.mlp = SoftMoE(dim, mlp_mult, num_experts, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
+        else:
+            self.mlp = MLP(dim, mlp_mult, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
+        self.conv = None
+        if conv_kernel > 0:
+            self.conv = nn.Conv1d(dim, dim, conv_kernel, padding=conv_kernel - 1, groups=dim, bias=False)
 
     def forward(self, x: Tensor, x0: Tensor, attn_residual: Tensor | None = None, v_residual: Tensor | None = None, return_v: bool = False) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
         mix = self.resid_mix.to(dtype=x.dtype)
         x = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
+        if self.conv is not None:
+            x = x + self.conv(x.transpose(1, 2))[:, :, :x.size(1)].transpose(1, 2)
         if attn_residual is not None:
             x = x + attn_residual
         if return_v:
@@ -1159,6 +1194,11 @@ class GPT(nn.Module):
         mlp_act: str = "relu2",
         act_power: float = 2.0,
         act_gate_floor: float = 0.5,
+        embed_bottleneck: int = 0,
+        num_unique_blocks: int = 0,
+        num_cycles: int = 1,
+        conv_kernel: int = 0,
+        num_experts: int = 0,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -1167,11 +1207,28 @@ class GPT(nn.Module):
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
         self.attnres_mode = attnres_mode
-        self.tok_emb = nn.Embedding(vocab_size, model_dim)
-        self.num_encoder_layers = num_layers // 2
-        self.num_decoder_layers = num_layers - self.num_encoder_layers
-        self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
-        self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
+        # Factorized embedding: vocab→bottleneck→model_dim
+        self.embed_proj = None
+        if embed_bottleneck > 0:
+            self.tok_emb = nn.Embedding(vocab_size, embed_bottleneck)
+            self.embed_proj = CastedLinear(embed_bottleneck, model_dim, bias=False)
+        else:
+            self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        # Weight sharing: create fewer unique blocks, cycle through them
+        self.num_cycles = num_cycles if num_unique_blocks > 0 else 1
+        actual_blocks = num_unique_blocks if num_unique_blocks > 0 else num_layers
+        effective_layers = actual_blocks * self.num_cycles
+        self.weight_sharing = num_unique_blocks > 0
+        if self.weight_sharing:
+            self.num_encoder_layers = effective_layers // 2
+            self.num_decoder_layers = effective_layers - self.num_encoder_layers
+            self.num_skip_weights = 0
+            self.skip_weights = nn.Parameter(torch.zeros(0, dtype=torch.float32))
+        else:
+            self.num_encoder_layers = num_layers // 2
+            self.num_decoder_layers = num_layers - self.num_encoder_layers
+            self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
+            self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
         use_v_gate = attnres_mode == "value_residual_gated"
         self.blocks = nn.ModuleList(
             [
@@ -1186,8 +1243,10 @@ class GPT(nn.Module):
                     mlp_act=mlp_act,
                     act_power=act_power,
                     act_gate_floor=act_gate_floor,
+                    conv_kernel=conv_kernel,
+                    num_experts=num_experts,
                 )
-                for i in range(num_layers)
+                for i in range(actual_blocks)
             ]
         )
         # Weighted inter-layer attention: each layer learns weights over all previous outputs
@@ -1216,66 +1275,69 @@ class GPT(nn.Module):
 
     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
         x = self.tok_emb(input_ids)
+        if self.embed_proj is not None:
+            x = self.embed_proj(x)
         x = F.rms_norm(x, (x.size(-1),))
         x0 = x
-        skips: list[Tensor] = []
-        mode = self.attnres_mode
-        is_vr = mode in ("value_residual", "value_residual_gated", "value_residual_mid")
-
-        # AttnRes: cumsum accumulates attention outputs across layers
-        attn_cumsum: Tensor | None = None
-        # AttnRes: value_residual stores a source layer's V for reuse
-        v_res: Tensor | None = None
-        # For value_residual_mid, capture from encoder midpoint instead of layer 0
-        vr_capture_layer = self.num_encoder_layers // 2 if mode == "value_residual_mid" else 0
-
-        # Weighted modes: store all layer outputs for weighted combination
-        if self.layer_weights is not None:
-            layer_outputs: list[Tensor] = [x]  # index 0 = embedding
-
-        # First half stores skips; second half reuses them in reverse order.
-        for i in range(self.num_encoder_layers):
-            # Weighted modes: replace input with weighted combination of all previous outputs
+        # Weight sharing: simple pass through blocks × cycles (no U-Net)
+        if self.weight_sharing:
+            for _cycle in range(self.num_cycles):
+                for block in self.blocks:
+                    x, _ = block(x, x0)
+        else:
+            skips: list[Tensor] = []
+            mode = self.attnres_mode
+            is_vr = mode in ("value_residual", "value_residual_gated", "value_residual_mid")
+            attn_cumsum: Tensor | None = None
+            v_res: Tensor | None = None
+            vr_capture_layer = self.num_encoder_layers // 2 if mode == "value_residual_mid" else 0
             if self.layer_weights is not None:
-                w = F.softmax(self.layer_weights[i].to(dtype=x.dtype), dim=0)
-                if w.ndim == 1:
-                    x = sum(w[j] * layer_outputs[j] for j in range(len(layer_outputs)))
+                layer_outputs: list[Tensor] = [x]
+            for i in range(self.num_encoder_layers):
+                if self.layer_weights is not None:
+                    w = F.softmax(self.layer_weights[i].to(dtype=x.dtype), dim=0)
+                    if w.ndim == 1:
+                        x = sum(w[j] * layer_outputs[j] for j in range(len(layer_outputs)))
+                    else:
+                        x = sum(w[j][None, None, :] * layer_outputs[j] for j in range(len(layer_outputs)))
+                ar = attn_cumsum if mode == "cumsum" else None
+                vr = v_res if is_vr and i > vr_capture_layer else None
+                need_v = is_vr and i == vr_capture_layer
+                if need_v:
+                    x, attn_out, v_res = self.blocks[i](x, x0, attn_residual=ar, v_residual=None, return_v=True)
                 else:
-                    x = sum(w[j][None, None, :] * layer_outputs[j] for j in range(len(layer_outputs)))
-            ar = attn_cumsum if mode == "cumsum" else None
-            vr = v_res if is_vr and i > vr_capture_layer else None
-            need_v = is_vr and i == vr_capture_layer
-            if need_v:
-                x, attn_out, v_res = self.blocks[i](x, x0, attn_residual=ar, v_residual=None, return_v=True)
-            else:
-                x, attn_out = self.blocks[i](x, x0, attn_residual=ar, v_residual=vr)
-            if mode == "cumsum":
-                attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
-            skips.append(x)
-            if self.layer_weights is not None:
-                layer_outputs.append(x)
-        for i in range(self.num_decoder_layers):
-            if skips:
-                x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            layer_idx = self.num_encoder_layers + i
-            if self.layer_weights is not None:
-                w = F.softmax(self.layer_weights[layer_idx].to(dtype=x.dtype), dim=0)
-                if w.ndim == 1:
-                    x = sum(w[j] * layer_outputs[j] for j in range(len(layer_outputs)))
-                else:
-                    x = sum(w[j][None, None, :] * layer_outputs[j] for j in range(len(layer_outputs)))
-            ar = attn_cumsum if mode == "cumsum" else None
-            vr = v_res if is_vr else None
-            x, attn_out = self.blocks[layer_idx](x, x0, attn_residual=ar, v_residual=vr)
-            if mode == "cumsum":
-                attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
-            if self.layer_weights is not None:
-                layer_outputs.append(x)
+                    x, attn_out = self.blocks[i](x, x0, attn_residual=ar, v_residual=vr)
+                if mode == "cumsum":
+                    attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
+                skips.append(x)
+                if self.layer_weights is not None:
+                    layer_outputs.append(x)
+            for i in range(self.num_decoder_layers):
+                if skips:
+                    x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+                layer_idx = self.num_encoder_layers + i
+                if self.layer_weights is not None:
+                    w = F.softmax(self.layer_weights[layer_idx].to(dtype=x.dtype), dim=0)
+                    if w.ndim == 1:
+                        x = sum(w[j] * layer_outputs[j] for j in range(len(layer_outputs)))
+                    else:
+                        x = sum(w[j][None, None, :] * layer_outputs[j] for j in range(len(layer_outputs)))
+                ar = attn_cumsum if mode == "cumsum" else None
+                vr = v_res if is_vr else None
+                x, attn_out = self.blocks[layer_idx](x, x0, attn_residual=ar, v_residual=vr)
+                if mode == "cumsum":
+                    attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
+                if self.layer_weights is not None:
+                    layer_outputs.append(x)
 
         x = self.final_norm(x).reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
         if self.tie_embeddings:
-            logits_proj = F.linear(x, self.tok_emb.weight)
+            if self.embed_proj is not None:
+                # Factored tied output: model_dim→bottleneck→vocab
+                logits_proj = F.linear(x @ self.embed_proj.weight, self.tok_emb.weight)
+            else:
+                logits_proj = F.linear(x, self.tok_emb.weight)
         else:
             if self.lm_head is None:
                 raise RuntimeError("lm_head is required when tie_embeddings=False")
@@ -1399,6 +1461,11 @@ def main() -> None:
         mlp_act=args.mlp_act,
         act_power=args.act_power,
         act_gate_floor=args.act_gate_floor,
+        embed_bottleneck=args.embed_bottleneck,
+        num_unique_blocks=args.num_unique_blocks,
+        num_cycles=args.num_cycles,
+        conv_kernel=args.conv_kernel,
+        num_experts=args.num_experts,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
@@ -1430,6 +1497,8 @@ def main() -> None:
         for name, p in block_named_params
         if p.ndim < 2 or any(pattern in name for pattern in CONTROL_TENSOR_NAME_PATTERNS)
     ]
+    if base_model.embed_proj is not None:
+        matrix_params.append(base_model.embed_proj.weight)
     if base_model.skip_weights.numel() > 0:
         scalar_params.append(base_model.skip_weights)
     if base_model.layer_weights is not None:
@@ -1482,6 +1551,16 @@ def main() -> None:
         f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
     )
     log0(f"seed:{args.seed}")
+    if args.num_unique_blocks > 0:
+        log0(f"weight_sharing: unique_blocks={args.num_unique_blocks} cycles={args.num_cycles} effective_depth={args.num_unique_blocks * args.num_cycles}")
+    if args.embed_bottleneck > 0:
+        log0(f"factored_embed: bottleneck={args.embed_bottleneck}")
+    if args.conv_kernel > 0:
+        log0(f"depthwise_conv: kernel={args.conv_kernel}")
+    if args.num_experts > 0:
+        log0(f"soft_moe: num_experts={args.num_experts}")
+    if args.qat_start_frac > 0:
+        log0(f"qat: start_frac={args.qat_start_frac} start_step={int(args.iterations * args.qat_start_frac)}")
 
     # -----------------------------
     # DATA LOADER & MODEL WARMUP
@@ -1620,6 +1699,9 @@ def main() -> None:
             break
 
         elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+        # QAT: enable fake quantization after qat_start_frac of training
+        if args.qat_start_frac > 0 and step >= int(args.iterations * args.qat_start_frac):
+            CastedLinear.qat_enabled = True
         scale = lr_mul(step, elapsed_ms)
         zero_grad_all()
         train_loss = torch.zeros((), device=device)
