@@ -14,7 +14,8 @@ export ANTHROPIC_SMALL_FAST_MODEL="$DEBATE_MODEL"
 PROMPT="${1:-Read KNOWLEDGE.md and the latest results. What are the 3 highest-value experiments to run next? Be specific with env var configs.}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUT_DIR="debate/rounds/$TIMESTAMP"
-mkdir -p "$OUT_DIR"
+PROMPT_DIR="$OUT_DIR/prompts"
+mkdir -p "$OUT_DIR" "$PROMPT_DIR"
 
 echo "=== Quick Review ($DEBATE_MODEL) ==="
 echo ""
@@ -23,42 +24,52 @@ TASK="$PROMPT
 
 Read KNOWLEDGE.md for proven facts and failed approaches, then check results/explore/ and results/validate/ for recent experiments. Follow your persona's output format."
 
-echo "  Launching 3 agents..."
-claude --print -p "$(cat debate/personas/architect.md)
-
-$TASK" > "$OUT_DIR/architect.md" 2>/dev/null &
-PID1=$!
-
-claude --print -p "$(cat debate/personas/skeptic.md)
-
-$TASK" > "$OUT_DIR/skeptic.md" 2>/dev/null &
-PID2=$!
-
-claude --print -p "$(cat debate/personas/explorer.md)
-
-$TASK" > "$OUT_DIR/explorer.md" 2>/dev/null &
-PID3=$!
-
-wait $PID1 && echo "  ✓ Architect" || echo "  ✗ Architect"
-wait $PID2 && echo "  ✓ Skeptic" || echo "  ✗ Skeptic"
-wait $PID3 && echo "  ✓ Explorer" || echo "  ✗ Explorer"
-
-echo "  Synthesizing..."
-REVIEWS=""
-for F in "$OUT_DIR"/{architect,skeptic,explorer}.md; do
-    NAME=$(basename "$F" .md)
-    [ -s "$F" ] && REVIEWS="$REVIEWS
-━━━ THE $(echo "$NAME" | tr '[:lower:]' '[:upper:]') ━━━
-$(cat "$F")
-"
+# Write prompt files
+for AGENT in architect skeptic explorer; do
+    cat "debate/personas/${AGENT}.md" > "$PROMPT_DIR/${AGENT}.txt"
+    echo "" >> "$PROMPT_DIR/${AGENT}.txt"
+    echo "$TASK" >> "$PROMPT_DIR/${AGENT}.txt"
 done
 
-claude --print -p "Three agents reviewed: '$PROMPT'
+echo "  Launching 3 agents..."
+cat "$PROMPT_DIR/architect.txt" | claude -p > "$OUT_DIR/architect.md" 2>"$OUT_DIR/architect.err" &
+PID1=$!
+cat "$PROMPT_DIR/skeptic.txt" | claude -p > "$OUT_DIR/skeptic.md" 2>"$OUT_DIR/skeptic.err" &
+PID2=$!
+cat "$PROMPT_DIR/explorer.txt" | claude -p > "$OUT_DIR/explorer.md" 2>"$OUT_DIR/explorer.err" &
+PID3=$!
 
-$REVIEWS
+echo "  Waiting... (tail -f $OUT_DIR/*.md to watch live)"
+while kill -0 $PID1 2>/dev/null || kill -0 $PID2 2>/dev/null || kill -0 $PID3 2>/dev/null; do
+    ARCH_N=$(wc -l < "$OUT_DIR/architect.md" 2>/dev/null || echo 0)
+    SKEP_N=$(wc -l < "$OUT_DIR/skeptic.md" 2>/dev/null || echo 0)
+    EXPL_N=$(wc -l < "$OUT_DIR/explorer.md" 2>/dev/null || echo 0)
+    printf "\r  Architect: %4s lines | Skeptic: %4s lines | Explorer: %4s lines" "$ARCH_N" "$SKEP_N" "$EXPL_N"
+    sleep 10
+done
+echo ""
 
-Synthesize: agreements, disagreements, final ranked experiment list with exact env var configs." \
-> "$OUT_DIR/synthesis.md" 2>/dev/null
+wait $PID1 && echo "  ✓ Architect" || echo "  ✗ Architect (see $OUT_DIR/architect.err)"
+wait $PID2 && echo "  ✓ Skeptic" || echo "  ✗ Skeptic (see $OUT_DIR/skeptic.err)"
+wait $PID3 && echo "  ✓ Explorer" || echo "  ✗ Explorer (see $OUT_DIR/explorer.err)"
+
+# Synthesize
+echo "  Synthesizing..."
+{
+    echo "Three agents with different perspectives reviewed: '$PROMPT'"
+    echo ""
+    for AGENT in architect skeptic explorer; do
+        F="$OUT_DIR/${AGENT}.md"
+        if [ -s "$F" ]; then
+            echo "━━━ THE $(echo "$AGENT" | tr '[:lower:]' '[:upper:]') ━━━"
+            cat "$F"
+            echo ""
+        fi
+    done
+    echo "Synthesize: agreements, disagreements, final ranked experiment list with exact env var configs."
+} > "$PROMPT_DIR/synthesis.txt"
+
+cat "$PROMPT_DIR/synthesis.txt" | claude -p > "$OUT_DIR/synthesis.md" 2>"$OUT_DIR/synthesis.err"
 
 echo ""
 cat "$OUT_DIR/synthesis.md"
