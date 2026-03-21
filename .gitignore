@@ -20,6 +20,7 @@ results/**/events.out.tfevents*
 records/**/train.log
 !records/**/submission.json
 lab/gpu_creds.sh
+lab/gpu
 lab/REMOTE_GPU_CONTROL.md
 lab/watch_all_gpus.sh
 /my-life/
