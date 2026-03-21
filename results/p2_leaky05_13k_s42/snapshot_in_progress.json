@@ -1,0 +1,33 @@
+{
+  "run_id": "p2_leaky05_13k_s42",
+  "status": "IN_PROGRESS",
+  "snapshot_time_utc": "2026-03-21T06:30:00+00:00",
+  "config": {"MLP_ACT": "leaky_relu2_05", "max_steps": 13780, "SEED": 42, "CHECKPOINT_EVERY": 1000},
+  "step_avg_ms": 2589,
+  "last_step_reached": 1010,
+  "checkpoint_at_step_1000": "checkpoints/p2_leaky05_13k_s42/ckpt_1000.pt (130MB, not in git)",
+  "val_checkpoints": [
+    {"step": 0,    "val_bpb": 4.1087},
+    {"step": 50,   "val_bpb": 2.3788},
+    {"step": 100,  "val_bpb": 2.0444},
+    {"step": 150,  "val_bpb": 1.8373},
+    {"step": 200,  "val_bpb": 1.7214},
+    {"step": 250,  "val_bpb": 1.6416},
+    {"step": 300,  "val_bpb": 1.5943},
+    {"step": 350,  "val_bpb": 1.5651},
+    {"step": 400,  "val_bpb": 1.5327},
+    {"step": 450,  "val_bpb": 1.5098},
+    {"step": 500,  "val_bpb": 1.4936},
+    {"step": 550,  "val_bpb": 1.4814},
+    {"step": 600,  "val_bpb": 1.4627},
+    {"step": 650,  "val_bpb": 1.4506},
+    {"step": 700,  "val_bpb": 1.4362},
+    {"step": 750,  "val_bpb": 1.4280},
+    {"step": 800,  "val_bpb": 1.4213},
+    {"step": 850,  "val_bpb": 1.4121},
+    {"step": 900,  "val_bpb": 1.4064},
+    {"step": 950,  "val_bpb": 1.3999},
+    {"step": 1000, "val_bpb": 1.3932}
+  ],
+  "notes": "leaky(0.5)² full 13k run, seed 42. Running well at 2589ms/step. Needs to complete on faster hardware. This is the primary submission candidate (plain leaky without gradfloor)."
+}

@@ -1,0 +1,20 @@
+{
+  "run_id": "p2_leaky05_13k_s1337",
+  "status": "IN_PROGRESS_SLOW",
+  "snapshot_time_utc": "2026-03-21T06:30:00+00:00",
+  "config": {"MLP_ACT": "leaky_relu2_05", "max_steps": 13780, "SEED": 1337, "CHECKPOINT_EVERY": 1000},
+  "step_avg_ms": 6148,
+  "last_step_reached": 400,
+  "val_checkpoints": [
+    {"step": 0,    "val_bpb": 4.1077},
+    {"step": 50,   "val_bpb": 2.3799},
+    {"step": 100,  "val_bpb": 2.0136},
+    {"step": 150,  "val_bpb": 1.8296},
+    {"step": 200,  "val_bpb": 1.7279},
+    {"step": 250,  "val_bpb": 1.6513},
+    {"step": 300,  "val_bpb": 1.6016},
+    {"step": 350,  "val_bpb": 1.5558},
+    {"step": 400,  "val_bpb": 1.5397}
+  ],
+  "notes": "leaky(0.5)² full 13k run, seed 1337. GPU 3 running 2.4x slower than expected (6148ms vs 2589ms). Only at step 400/13780. MUST restart on new hardware — not worth continuing here."
+}
