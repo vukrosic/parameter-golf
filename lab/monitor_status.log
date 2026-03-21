@@ -28,3 +28,9 @@ Done: 6 | Failed: 0
 Total submission size int8+zlib: 11497856 bytes
 |    0   N/A  N/A           55662      C   python3                               12998MiB |
 
+=== Sat Mar 21 00:34:33 UTC 2026 ===
+Done: 7 | Failed: 0
+[00:05:07] STARTING experiment 8: p2_h1_gradceil (500 steps)
+step:360/500 train_loss:2.6306 train_time:895181ms step_avg:2486.61ms
+|    0   N/A  N/A           58297      C   python3                               12806MiB |
+
