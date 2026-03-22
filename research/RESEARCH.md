@@ -1,0 +1,41 @@
+# Research Index
+
+Research is organized in three stages: **Explorations** (free-form probing), **Hypotheses** (formal testable claims), and **Findings** (publication-ready results).
+
+## Findings (Published)
+
+| ID | Title | Status | Hypotheses |
+|----|-------|--------|------------|
+| F001 | [Activation Design Rules](findings/F001_activation_design_rules.md) | DRAFT | H001, H002, H003 |
+| F002 | [Architecture Sweep at 16MB Scale](findings/F002_architecture_sweep.md) | DRAFT | H004 |
+
+## Hypotheses
+
+| ID | Claim | Status | Origin |
+|----|-------|--------|--------|
+| H001 | [Squaring activations improves val_bpb](hypotheses/H001_squared_activations.md) | CONFIRMED | Activation exploration |
+| H002 | [Gradient scaling with magnitude is critical](hypotheses/H002_gradient_scaling.md) | CONFIRMED | Activation exploration |
+| H003 | [Negative leakage improves squared activations](hypotheses/H003_negative_leakage.md) | CONFIRMED | Activation exploration |
+| H004 | [Untied factored embeddings beat tied at 16MB](hypotheses/H004_untied_embeddings.md) | CONFIRMED | Architecture exploration |
+
+## Explorations (Recent)
+
+| Date | Title | Status |
+|------|-------|--------|
+| | *No explorations yet — use the template to start one* | |
+
+## How It Works
+
+```
+Curiosity → Exploration (500 steps, free-form)
+                ↓  "I see a pattern..."
+         Hypothesis (formal claim + pre-registered test plan)
+                ↓  "Run the test"
+         Validate (2000-4000 steps, multi-seed)
+                ↓  "Confirmed / Falsified"
+         Finding (publication-ready write-up)
+                ↓
+         X Post (/post skill)
+```
+
+See templates in each directory for the expected format.
