@@ -44,6 +44,9 @@ KNOWLEDGE.md                 # Persistent research memory (proven facts, failed 
 │   ├── findings/            # Experiment analysis documents
 │   └── figures/             # Plots and visualizations
 │
+├── screens/                 # Tiered screen configs (one .py file per topic)
+│   └── archive/             # Completed screens
+│
 ├── queues/                  # Experiment queue management
 │   ├── active.txt           # THE current queue (what gets run next)
 │   └── archive/             # Completed/old queue files
@@ -88,7 +91,25 @@ Skills auto-discover GPUs by parsing `gpu_creds.sh` via `.claude/skills/fleet/sc
 
 ## Running Experiments
 
-### Single experiment
+### Step 0: Tiered screen (local, free — always do this first)
+
+Before spending any GPU time, screen ideas locally in seconds:
+
+```bash
+# 1. Create a screen config (copy template, fill in CONFIGS list)
+cp screens/template.py screens/<topic>.py
+
+# 2. Run the screen
+python3 infra/tiered_screen.py --screen screens/<topic>.py [--ladder quick|standard|thorough]
+
+# 3. Read the report
+cat results/tiered_screen_<topic>_<date>.md
+```
+
+Only candidates that beat the baseline across **both stages** advance to a GPU queue.
+Ladder presets: `quick` (1→2 steps, seconds), `standard` (3→6 steps, minutes), `thorough` (10→20 steps).
+
+### Single experiment (GPU)
 ```bash
 infra/run_experiment.sh <name> <steps>
 # With overrides:

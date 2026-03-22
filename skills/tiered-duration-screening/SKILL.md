@@ -1,56 +1,72 @@
 ---
 name: tiered-screen
-description: Screen architecture variants with a fast 1s→2s→3s ladder. Promote top runs at each stage. Write all three result tables to a markdown report file.
+description: Screen architecture variants with a fast step-ladder. Eliminate losers early, scale only survivors. Writes a markdown report with per-stage tables.
 ---
 
-# Tiered Architecture Screen
+# Tiered Screen
 
 ## What This Does
 
-Runs many architecture variants cheaply, promotes winners to longer runs, drops losers early. Produces a markdown report file with three comparison tables — one per stage.
+Runs many architecture variants cheaply in a single process (no per-run startup cost), promotes winners to longer runs, drops losers early. Writes `results/tiered_screen_<topic>_<date>.md` with three tables.
 
-## Ladder
+**This is the required first step before any GPU experiment.**
 
-- Default: `1s → 2s → 3s`, counts `10 → top 5 → top 3`
-- Use `MAX_WALLCLOCK_SECONDS` as the duration knob, set `ITERATIONS` high so wallclock is the limit.
-- Adjust ladder and counts if the user specifies different durations or promotion counts.
+## How to Run
 
-## Steps
+```bash
+# 1. Create a screen config
+cp screens/template.py screens/<topic>.py
+# Edit CONFIGS list — first entry must be baseline with overrides={}
 
-### 1. Run Stage 1
-Run all candidates at the first duration. Include a baseline run.
+# 2. Run
+python3 infra/tiered_screen.py --screen screens/<topic>.py --ladder quick
 
-### 2. Promote and run Stage 2
-Sort by `delta_loss = candidate_loss - baseline_loss` (lower is better). Re-run the top k at the second duration, plus a fresh same-duration baseline.
-
-### 3. Promote and run Stage 3
-Same as above: promote top k from Stage 2, run at the third duration with a fresh baseline.
-
-### 4. Write the report file
-
-**Always write results to `results/tiered_screen_<timestamp>.md`** (or a name the user specifies).
-
-The file must contain three markdown tables plus a short conclusion. Never just print to the terminal — write the file.
-
-Table format (one per stage):
-
-```markdown
-### Stage 1 — 1s
-
-| Run | Duration | Architecture change | Loss | Baseline loss | Delta loss | Decision |
-|---|---:|---|---:|---:|---:|---|
-| tiered_1s_baseline | 1s | baseline | 6.9312 | 6.9312 | +0.0000 | baseline |
-| tiered_1s_swiglu   | 1s | SwiGLU activation | 6.9280 | 6.9312 | -0.0032 | promote ✓ |
+# 3. Read report
+cat results/tiered_screen_<topic>_<date>.md
 ```
 
-Finish with 2–4 sentences: what survived, what died, whether the ladder is stable enough to justify longer validation runs.
+Ladder options:
 
-## Repo Conventions
+| Preset | Stage 1 | Stage 2 | Candidates | Promote |
+|---|---:|---:|---:|---:|
+| `quick` | 1 step | 2 steps | any | top 2 |
+| `standard` | 3 steps | 6 steps | any | top 3 |
+| `thorough` | 10 steps | 20 steps | any | top 5 |
 
-- Stage labels: `tiered_1s`, `tiered_2s`, `tiered_3s`
-- Per-run results: `results/<run_id>/summary.json`
-- Report file: `results/tiered_screen_<timestamp>.md`
+## Screen Config Format
 
-## Duration Overrides
+`screens/<topic>.py` must define a `CONFIGS` list:
 
-Replace the ladder with any durations the user specifies. Keep promotion counts aligned unless told otherwise.
+```python
+WHY = "One sentence: why these candidates."  # optional, shown in report header
+
+CONFIGS = [
+    ("baseline",    "Control — no changes.",                    {}),
+    ("my_variant",  "What changes and what hypothesis it tests.", {"mlp_act": "swiglu"}),
+]
+```
+
+- First entry is always the baseline (`overrides={}`)
+- `desc` is one sentence explaining what the change tests
+- `overrides` keys must match `FULL` dict in `infra/tiered_screen.py`
+- Finished screen files go in `screens/archive/`
+
+## Promotion Rule
+
+Sort by `delta_loss = candidate_loss - baseline_loss` (lower is better).
+Promote only candidates that beat the baseline. If a candidate led at stage 1 but flipped at stage 2, drop it — that's initialization noise, not signal.
+
+## Report Output
+
+Always written to `results/tiered_screen_<topic>_<date>.md`. Contains:
+- Header: model, ladder, why these candidates
+- Stage 1 table with decision column
+- Stage 2 table with decision column
+- "What happened" conclusion: who survived, who flipped, next action
+
+## What Claude Should Do
+
+1. If user has candidates in mind: write `screens/<topic>.py` with them, run the screen.
+2. If user wants Claude to pick: choose from KNOWLEDGE.md proven facts + prior screen finalists. Prefer changes with clear architectural motivation over LR tuning.
+3. After the run: read the report, summarize finalists in plain language, recommend whether to promote to a 500-step explore queue or run another screen with a different direction.
+4. Move finished screen file to `screens/archive/<topic>.py`.

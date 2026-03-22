@@ -138,10 +138,11 @@ Run many ideas cheaply. Kill losers early. Scale only survivors. Never spend ful
 
 ### Implementation
 
-- Use `infra/tiered_screen.py` for in-process screening (fast, no per-run startup cost).
-- Use `infra/run_queue.sh` + `queues/tiered_duration_*.txt` for GPU-deployed runs.
-- Report file: `results/tiered_screen_<date>.md`
-- Use `/tiered-screen` skill to orchestrate.
+- Write `screens/<topic>.py` with a `CONFIGS` list (copy `screens/template.py`).
+- Run: `python3 infra/tiered_screen.py --screen screens/<topic>.py [--ladder quick|standard|thorough]`
+- Report written to: `results/tiered_screen_<topic>_<date>.md`
+- Move finished screen files to `screens/archive/`.
+- Use the `/tiered-screen` skill to let Claude pick candidates and orchestrate.
 
 ---
 
