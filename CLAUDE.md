@@ -82,6 +82,9 @@ Skills auto-discover GPUs by parsing `gpu_creds.sh` via `.claude/skills/fleet/sc
 | `/cost` | Budget report ($40 limit, burn rate, per-GPU) |
 | `/kill-exp` | Stop running experiments |
 | `/add-gpu` | Register a new GPU instance |
+| `/wave` | **Research loop orchestrator** — status, plan, approve, results, pivot |
+| `/post` | Draft X/Twitter posts from experiment results |
+| `/research` | Legacy research pipeline (prefer `/wave`) |
 
 ## Running Experiments
 
@@ -103,10 +106,26 @@ bash infra/run_queue.sh queues/active.txt
 
 ## Research Pipeline
 
+See `research/PIPELINE.md` for the full pipeline definition. The loop:
+
+```
+/wave           → Check status, get suggested next action
+/wave plan      → Run debate (direction/scale/pivot) → generate wave plan
+/wave approve   → Lock plan, activate queue
+/deploy         → Send to GPUs
+/wave results   → Collect, compare, gate check, draft X post
+```
+
+Three debate types select different agent combinations:
+- **Direction** (Architect + Explorer + Skeptic): New ideas to explore
+- **Scale** (Architect + Challenger + Optimizer): Validate/scale winners
+- **Pivot** (all 5 agents): Strategic reassessment when stuck
+
 | Stage | Steps | Time (L40S) | Purpose | Advance if |
 |-------|------:|-------------|---------|------------|
 | Explore | 500 | ~28 min | Screen many ideas fast | >0.01 BPB improvement |
-| Validate | 2000-5000 | 1.8-4.6 hr | Confirm explore winners | >0.005 BPB on 2+ seeds |
+| Validate-light | 2000 | ~1.8 hr | Quick confirmation | >0.005 BPB on 2+ seeds |
+| Validate-full | 4000 | ~3.7 hr | Strong confirmation | >0.005 BPB on 2+ seeds |
 | Full | 13780 | ~12.7 hr | Pre-submission | Beats 1.2244 BPB |
 
 Results are automatically sorted into `results/explore/`, `results/validate/`, `results/full/` based on step count.

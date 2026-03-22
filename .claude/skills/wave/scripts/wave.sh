@@ -155,9 +155,10 @@ status_mode() {
     echo ""
 
     # Check fleet
+    local running=0
     if [ -f .claude/skills/fleet/scripts/fleet_status.sh ]; then
-        local running
-        running=$(bash .claude/skills/fleet/scripts/fleet_status.sh 2>/dev/null | grep -c "training" || echo "0")
+        running=$(bash .claude/skills/fleet/scripts/fleet_status.sh 2>/dev/null | grep -c "training" || true)
+        running=${running:-0}
         echo "  GPUs training: $running"
     fi
 
@@ -194,12 +195,6 @@ print(d.get('val_bpb') or d.get('final_quant_eval', {}).get('val_bpb', '?'))
     echo "── Suggested Next Action ──"
 
     if [ "$jobs" -gt 0 ]; then
-        # Check if experiments are actually running
-        local running=0
-        if [ -f .claude/skills/fleet/scripts/fleet_status.sh ]; then
-            running=$(bash .claude/skills/fleet/scripts/fleet_status.sh 2>/dev/null | grep -c "training" || echo "0")
-        fi
-
         if [ "$running" -gt 0 ]; then
             echo "  Experiments running. Use /status to monitor progress."
         else
