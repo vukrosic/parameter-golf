@@ -44,11 +44,17 @@ Last updated: 2026-03-21
 - **Leaderboard baseline**: 1.2244 BPB (8xH100, 600s)
 - **Our best L40S result**: relu² at 13k steps → 1.2498 post-quant BPB
 
-10. **MoE 4-expert is powerful but exceeds 16 MB budget.** At dim=512, 4 experts → 19.6 MB (22% over). The -0.048 BPB gain vs baseline is confounded by having 55% more parameters. Need reduced-dim experiments to determine if the architecture wins at iso-parameter budget.
+10. **MoE 4-expert fits under 16 MB at dim=384.** At dim=512, 4 experts → 24.7 MB (too large). At dim=384 (6 heads, 3 KV): 15.0M params → 14.2 MB ✓. At dim=400 (8 heads, 4 KV): 16.3M params → 15.3 MB ✓. dim=384 is the sweet spot (most room for extras like bn128).
 
 11. **MoE expert count matters most.** 4 > 3 >> 2 experts. The jump from 2→4 is worth ~0.04 BPB at 500 steps. But only 2-expert fits under 16 MB at dim=512 (-0.006 to -0.019 BPB).
 
 12. **Untied factored embeddings (bn128) are the best legal architecture change.** -0.031 BPB at 12.6 MB. Tied factored embeddings are catastrophic — bn128 tied *hurts* by +0.076 BPB. The untied/tied distinction is the critical factor, not the bottleneck width.
+
+16. **MoE4e + bn128 untied + leaky at dim=384 is the best legal config found.** 15.2M params, 14.3 MB submission. At 4000 steps: 1.3564 quant BPB — beats MoE4e d384 alone (1.3637) by 0.007 BPB. bn128 untied and MoE stack cleanly. Full 13k runs in progress.
+
+17. **dim=400 offers no advantage over dim=384 for MoE4e.** d400 (1.3661) ties or slightly loses to d384 (1.3637) despite 8% more params. The MoE architecture benefits more from expert diversity than raw width.
+
+18. **MoE4e d384 is highly consistent across seeds.** s1337: 1.3637, s42: 1.3633. Δ=0.0004, well within noise. This config is robust.
 
 13. **Depthwise convolution is a dead end.** Every variant hurts (+0.025 to +0.174 BPB). Monotonically worse with larger kernels. Combinations with other techniques compound damage.
 
@@ -76,30 +82,35 @@ Last updated: 2026-03-21
 - [x] ~~Soft MoE at 17M scale?~~ Powerful (+0.048) but 4-expert blows 16 MB budget by 22%.
 - [x] ~~QAT alone?~~ Within noise. Doesn't hurt MoE — useful for submission.
 - [ ] leaky(0.5)² at full 13k steps — does the 0.003 gap hold?
-- [ ] **Can MoE 4-expert fit under 16 MB at reduced dim (~448)?** Highest priority.
-- [ ] **Does MoE 2e + untied bn128 + leaky stack?** Best legal combo, untested.
-- [ ] **Does untied bn128 hold at 2000+ steps with multiple seeds?**
+- [x] ~~Can MoE 4-expert fit under 16 MB at reduced dim?~~ YES. dim=384 → 14.2 MB, dim=400 → 15.3 MB. Both legal.
+- [x] ~~Does MoE 4e + untied bn128 + leaky stack?~~ YES. Best combo found: 1.3564 quant BPB at 4k steps, 14.3 MB.
+- [ ] **Does MoE4e bn128u d384 hold at 13k steps?** Full runs in progress on 4 GPUs.
+- [ ] **Can we close the 0.10+ BPB gap to 1.2244 leaderboard?** Need 13k results + possible further tricks.
+- [ ] **Does QAT help the reduced-dim MoE4e config?** Testing with QAT_START_FRAC=0.7.
 
 ## Current Best Configuration
 
 ```
-Architecture:  9-layer GPT, 512-dim, 8 heads, 4 KV heads
-Activation:    relu² (proven) or leaky(0.5)² (marginal +0.003)
-Vocab:         1024 BPE (tied embeddings)
+Architecture:  9-layer GPT, 384-dim, 6 heads, 3 KV heads
+Activation:    leaky(0.5)²
+Embeddings:    Untied factored bn128 (vocab→128→384, separate output head)
+MoE:           4 soft experts (expert_mult=1, hidden=384 per expert)
+Vocab:         1024 BPE
 Optimizer:     Muon
-Best result:   1.2498 post-quant BPB (13k steps, L40S)
-Target:        <1.2194 BPB (beat baseline by ≥0.005)
-Gap to close:  ~0.025 BPB (need architecture/mechanism wins)
+Params:        15.2M → 14.3 MB submission
+Best result:   1.3564 post-quant BPB (4k steps, 5090) — 13k runs in progress
+Target:        <1.2194 BPB (beat leaderboard by ≥0.005)
+Gap to close:  ~0.10+ BPB (awaiting 13k results)
 ```
 
-### Best Legal Architecture Candidates (500-step, pending validation)
+### Best Legal Architecture Candidates (4000-step validation, quant BPB)
 
 ```
-#1  Untied bn128 embeddings:     1.4483 BPB (-0.031), 12.6 MB
-#2  MoE 2e + 11L:                1.4606 BPB (-0.019), 15.4 MB
-#3  MoE 2e + leaky:              1.4698 BPB (-0.010), 12.7 MB
-    MoE 2e + untied + leaky:     UNTESTED (estimated ~12.8 MB)
-    MoE 4e at dim=448:           UNTESTED (estimated ~15 MB)
+#1  MoE4e + bn128u + leaky d384:  1.3564 BPB, 14.3 MB  ← BEST (full runs started)
+#2  MoE4e + leaky d384 s42:       1.3633 BPB, 14.2 MB
+#3  MoE4e + leaky d384 s1337:     1.3637 BPB, 14.2 MB
+#4  MoE4e + leaky d400 s1337:     1.3661 BPB, 15.3 MB
+    MoE4e + bn128u + leaky + QAT: IN PROGRESS (13k)
 ```
 
 ## Research Pipeline

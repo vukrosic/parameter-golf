@@ -300,3 +300,20 @@ echo ""
 echo "━━━ SYNTHESIS ━━━"
 echo ""
 cat "$OUT_DIR/synthesis.md"
+
+# ═══════════════════════════════════════════════════════════════════════
+# Append to persistent conclusions log
+# ═══════════════════════════════════════════════════════════════════════
+{
+    echo ""
+    echo "---"
+    echo ""
+    echo "## $(date '+%Y-%m-%d %H:%M') — $TOPIC"
+    echo ""
+    echo "**Model:** $DEBATE_MODEL | **Rounds:** $ROUNDS | **Full output:** $OUT_DIR/"
+    echo ""
+    cat "$OUT_DIR/synthesis.md"
+    echo ""
+} >> debate/CONCLUSIONS.md
+echo ""
+echo "📋 Appended to debate/CONCLUSIONS.md"

@@ -75,3 +75,19 @@ echo ""
 cat "$OUT_DIR/synthesis.md"
 echo ""
 echo "Full outputs: $OUT_DIR/"
+
+# Append to persistent conclusions log
+{
+    echo ""
+    echo "---"
+    echo ""
+    echo "## $(date '+%Y-%m-%d %H:%M') — Quick Review"
+    echo ""
+    echo "**Prompt:** $PROMPT"
+    echo ""
+    echo "**Model:** $DEBATE_MODEL | **Full output:** $OUT_DIR/"
+    echo ""
+    cat "$OUT_DIR/synthesis.md"
+    echo ""
+} >> debate/CONCLUSIONS.md
+echo "📋 Appended to debate/CONCLUSIONS.md"
