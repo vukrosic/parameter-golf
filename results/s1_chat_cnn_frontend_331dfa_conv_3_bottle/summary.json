@@ -1,0 +1,12 @@
+{
+  "run_id": "s1_chat_cnn_frontend_331dfa_conv_3_bottle",
+  "steps": 1,
+  "elapsed_s": 0.26,
+  "train_loss": 6.9323,
+  "n_params": 16746056,
+  "arch": "conv=3 + embed_bottleneck=128",
+  "overrides": {
+    "conv_kernel": 3,
+    "embed_bottleneck": 128
+  }
+}

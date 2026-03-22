@@ -1,0 +1,33 @@
+{
+  "config": {
+    "ITERATIONS": "1",
+    "MAX_WALLCLOCK_SECONDS": "1",
+    "MLP_MULT": "1",
+    "MODEL_DIM": "16",
+    "NUM_HEADS": "2",
+    "NUM_KV_HEADS": "1",
+    "NUM_LAYERS": "1",
+    "RUN_ID": "tiered_1s_embed_bn16",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "1",
+    "VAL_LOSS_EVERY": "0",
+    "WARMDOWN_ITERS": "0",
+    "WARMUP_STEPS": "0"
+  },
+  "generated_at_utc": "2026-03-22T15:49:05+00:00",
+  "git": {
+    "commit": "97a8aded2ee87a7f24373ee8b559a97c065bda37",
+    "commit_short": "97a8ade",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "575.57.08",
+      "memory_total": "24576 MiB",
+      "name": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "log_path": "logs/tiered_1s_embed_bn16.txt",
+  "run_id": "tiered_1s_embed_bn16"
+}

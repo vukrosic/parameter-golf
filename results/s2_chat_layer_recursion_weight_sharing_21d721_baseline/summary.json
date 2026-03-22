@@ -1,0 +1,9 @@
+{
+  "run_id": "s2_chat_layer_recursion_weight_sharing_21d721_baseline",
+  "steps": 2,
+  "elapsed_s": 0.47,
+  "train_loss": 7.6242,
+  "n_params": 17059912,
+  "arch": "Control \u2014 no changes.",
+  "overrides": {}
+}
