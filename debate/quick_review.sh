@@ -8,8 +8,6 @@ source debate/creds.sh
 
 export ANTHROPIC_BASE_URL="$NOVITA_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$NOVITA_KEY"
-export ANTHROPIC_MODEL="$DEBATE_MODEL"
-export ANTHROPIC_SMALL_FAST_MODEL="$DEBATE_MODEL"
 
 PROMPT="${1:-Read KNOWLEDGE.md and the latest results. What are the 3 highest-value experiments to run next? Be specific with env var configs.}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -17,12 +15,41 @@ OUT_DIR="debate/rounds/$TIMESTAMP"
 PROMPT_DIR="$OUT_DIR/prompts"
 mkdir -p "$OUT_DIR" "$PROMPT_DIR"
 
-echo "=== Quick Review ($DEBATE_MODEL) ==="
+echo "=== Quick Review ==="
+echo "  Architect: $MODEL_ARCHITECT"
+echo "  Skeptic:   $MODEL_SKEPTIC"
+echo "  Explorer:  $MODEL_EXPLORER"
+echo "  Synthesis: $MODEL_SYNTHESIS"
 echo ""
+
+# Build context snapshot
+KNOWLEDGE=$(cat KNOWLEDGE.md 2>/dev/null | head -300 || echo "(not found)")
+QUEUE=$(cat queues/active.txt 2>/dev/null || echo "(no active queue)")
+CONCLUSIONS=$(tail -80 debate/CONCLUSIONS.md 2>/dev/null || echo "(no previous debates)")
+RESULTS=""
+for f in $(ls -t results/*/summary.txt results/*/summary.json 2>/dev/null | head -10); do
+    RESULTS+="── $(dirname "$f" | sed 's|results/||') ──
+$(head -20 "$f")
+
+"
+done
+[ -z "$RESULTS" ] && RESULTS="(no results found)"
 
 TASK="$PROMPT
 
-Read KNOWLEDGE.md for proven facts and failed approaches, then check results/explore/ and results/validate/ for recent experiments. Follow your persona's output format."
+## KNOWLEDGE.md
+$KNOWLEDGE
+
+## Latest Results
+$RESULTS
+
+## Current Queue
+$QUEUE
+
+## Previous Debate Conclusions
+$CONCLUSIONS
+
+Follow your persona's output format."
 
 # Write prompt files
 for AGENT in architect skeptic explorer; do
@@ -31,12 +58,22 @@ for AGENT in architect skeptic explorer; do
     echo "$TASK" >> "$PROMPT_DIR/${AGENT}.txt"
 done
 
+run_agent() {
+    local prompt_file="$1"
+    local output_file="$2"
+    local model="${3:-$DEBATE_MODEL}"
+    local err_file="${output_file%.md}.err"
+    export ANTHROPIC_MODEL="$model"
+    export ANTHROPIC_SMALL_FAST_MODEL="$model"
+    cat "$prompt_file" | claude -p > "$output_file" 2>"$err_file"
+}
+
 echo "  Launching 3 agents..."
-cat "$PROMPT_DIR/architect.txt" | claude -p > "$OUT_DIR/architect.md" 2>"$OUT_DIR/architect.err" &
+run_agent "$PROMPT_DIR/architect.txt" "$OUT_DIR/architect.md" "$MODEL_ARCHITECT" &
 PID1=$!
-cat "$PROMPT_DIR/skeptic.txt" | claude -p > "$OUT_DIR/skeptic.md" 2>"$OUT_DIR/skeptic.err" &
+run_agent "$PROMPT_DIR/skeptic.txt" "$OUT_DIR/skeptic.md" "$MODEL_SKEPTIC" &
 PID2=$!
-cat "$PROMPT_DIR/explorer.txt" | claude -p > "$OUT_DIR/explorer.md" 2>"$OUT_DIR/explorer.err" &
+run_agent "$PROMPT_DIR/explorer.txt" "$OUT_DIR/explorer.md" "$MODEL_EXPLORER" &
 PID3=$!
 
 echo "  Waiting... (tail -f $OUT_DIR/*.md to watch live)"
@@ -54,7 +91,7 @@ wait $PID2 && echo "  ✓ Skeptic" || echo "  ✗ Skeptic (see $OUT_DIR/skeptic.
 wait $PID3 && echo "  ✓ Explorer" || echo "  ✗ Explorer (see $OUT_DIR/explorer.err)"
 
 # Synthesize
-echo "  Synthesizing..."
+echo "  Synthesizing ($MODEL_SYNTHESIS)..."
 {
     echo "Three agents with different perspectives reviewed: '$PROMPT'"
     echo ""
@@ -69,7 +106,7 @@ echo "  Synthesizing..."
     echo "Synthesize: agreements, disagreements, final ranked experiment list with exact env var configs."
 } > "$PROMPT_DIR/synthesis.txt"
 
-cat "$PROMPT_DIR/synthesis.txt" | claude -p > "$OUT_DIR/synthesis.md" 2>"$OUT_DIR/synthesis.err"
+run_agent "$PROMPT_DIR/synthesis.txt" "$OUT_DIR/synthesis.md" "$MODEL_SYNTHESIS"
 
 echo ""
 cat "$OUT_DIR/synthesis.md"
@@ -85,9 +122,10 @@ echo "Full outputs: $OUT_DIR/"
     echo ""
     echo "**Prompt:** $PROMPT"
     echo ""
-    echo "**Model:** $DEBATE_MODEL | **Full output:** $OUT_DIR/"
+    echo "**Models:** Architect=$MODEL_ARCHITECT, Skeptic=$MODEL_SKEPTIC, Explorer=$MODEL_EXPLORER, Synthesis=$MODEL_SYNTHESIS"
+    echo "**Full output:** $OUT_DIR/"
     echo ""
     cat "$OUT_DIR/synthesis.md"
     echo ""
 } >> debate/CONCLUSIONS.md
-echo "📋 Appended to debate/CONCLUSIONS.md"
+echo "Appended to debate/CONCLUSIONS.md"

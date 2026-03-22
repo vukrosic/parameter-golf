@@ -1,8 +1,8 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-# Multi-Agent Research Debate (MiniMax M2.7 via Novita)
+# Multi-Agent Research Debate (Mixed models via Novita)
 # ═══════════════════════════════════════════════════════════════════════
-# Three MiniMax instances with distinct personas debate experiments.
+# Three agents with distinct personas and models debate experiments.
 #
 # Usage:
 #   bash debate/debate.sh                          # full 3-round debate
@@ -23,28 +23,42 @@ OUT_DIR="debate/rounds/$TIMESTAMP"
 PROMPT_DIR="$OUT_DIR/prompts"
 mkdir -p "$OUT_DIR" "$PROMPT_DIR"
 
-# All agents use Novita
+# Base Novita config (per-agent model set in run_agent)
 export ANTHROPIC_BASE_URL="$NOVITA_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$NOVITA_KEY"
-export ANTHROPIC_MODEL="$DEBATE_MODEL"
-export ANTHROPIC_SMALL_FAST_MODEL="$DEBATE_MODEL"
 
 echo "╔═══════════════════════════════════════════════╗"
 echo "║         MULTI-AGENT RESEARCH DEBATE           ║"
 echo "╠═══════════════════════════════════════════════╣"
 echo "║ Topic: $(echo "$TOPIC" | head -c 43)"
 echo "║ Rounds: $ROUNDS"
-echo "║ Model: $DEBATE_MODEL (all agents)"
 echo "║ Output: $OUT_DIR/"
 echo "║                                               ║"
 echo "║ Agents:                                       ║"
-echo "║   Architect — structure & parameter budgets   ║"
-echo "║   Skeptic   — rigor & statistical evidence    ║"
-echo "║   Explorer  — creativity & literature         ║"
+echo "║   Architect — $MODEL_ARCHITECT"
+echo "║   Skeptic   — $MODEL_SKEPTIC"
+echo "║   Explorer  — $MODEL_EXPLORER"
+echo "║   Synthesis — $MODEL_SYNTHESIS"
 echo "╚═══════════════════════════════════════════════╝"
 echo ""
 
 # ─── Context instructions for all agents ─────────────────────────────
+
+# ─── Build context snapshot (inject real files, don't ask agents to read) ──
+
+KNOWLEDGE=$(cat KNOWLEDGE.md 2>/dev/null | head -300 || echo "(KNOWLEDGE.md not found)")
+QUEUE=$(cat queues/active.txt 2>/dev/null || echo "(no active queue)")
+CONCLUSIONS=$(tail -80 debate/CONCLUSIONS.md 2>/dev/null || echo "(no previous debates)")
+
+# Grab latest result summaries (up to 10)
+RESULTS=""
+for f in $(ls -t results/*/summary.txt results/*/summary.json 2>/dev/null | head -10); do
+    RESULTS+="── $(dirname "$f" | sed 's|results/||') ──
+$(head -20 "$f")
+
+"
+done
+[ -z "$RESULTS" ] && RESULTS="(no results found)"
 
 CONTEXT="## Project Context
 You are working on the Parameter Golf challenge: train the best 16MB language model in <10 min on 8xH100s. Scored by val_bpb (bits per byte, lower = better). Current leaderboard: 1.2244 BPB. Our best: 1.2498 BPB.
@@ -52,11 +66,17 @@ You are working on the Parameter Golf challenge: train the best 16MB language mo
 ## Your Task
 $TOPIC
 
-## Required Reading (use your file-reading tools)
-1. Read KNOWLEDGE.md — source of truth for proven facts and failed approaches
-2. Read results in results/explore/ and results/validate/ — look at summary.txt files
-3. Read queues/active.txt — what's currently queued
-4. Skim train_gpt.py lines 39-108 — the Hyperparameters class (all tunable env vars)
+## KNOWLEDGE.md (source of truth)
+$KNOWLEDGE
+
+## Latest Results
+$RESULTS
+
+## Current Queue
+$QUEUE
+
+## Previous Debate Conclusions
+$CONCLUSIONS
 
 ## Rules
 - NEVER propose something in KNOWLEDGE.md's Failed Approaches without explaining why this time is different
@@ -65,12 +85,15 @@ $TOPIC
 - Noise floor at 500 steps is ~0.003 BPB. Do not claim significance below that.
 - Name experiments in snake_case"
 
-# ─── Helper: write prompt to file, pipe to claude ─────────────────────
+# ─── Helper: write prompt to file, pipe to claude with model override ──
 
 run_agent() {
     local prompt_file="$1"
     local output_file="$2"
+    local model="${3:-$DEBATE_MODEL}"
     local err_file="${output_file%.md}.err"
+    export ANTHROPIC_MODEL="$model"
+    export ANTHROPIC_SMALL_FAST_MODEL="$model"
     cat "$prompt_file" | claude -p > "$output_file" 2>"$err_file"
 }
 
@@ -97,16 +120,16 @@ echo "$R1_SUFFIX" >> "$PROMPT_DIR/r1_skeptic.txt"
 cat debate/personas/explorer.md > "$PROMPT_DIR/r1_explorer.txt"
 echo "$R1_SUFFIX" >> "$PROMPT_DIR/r1_explorer.txt"
 
-echo "  Launching Architect..."
-run_agent "$PROMPT_DIR/r1_architect.txt" "$OUT_DIR/r1_architect.md" &
+echo "  Launching Architect ($MODEL_ARCHITECT)..."
+run_agent "$PROMPT_DIR/r1_architect.txt" "$OUT_DIR/r1_architect.md" "$MODEL_ARCHITECT" &
 PID1=$!
 
-echo "  Launching Skeptic..."
-run_agent "$PROMPT_DIR/r1_skeptic.txt" "$OUT_DIR/r1_skeptic.md" &
+echo "  Launching Skeptic ($MODEL_SKEPTIC)..."
+run_agent "$PROMPT_DIR/r1_skeptic.txt" "$OUT_DIR/r1_skeptic.md" "$MODEL_SKEPTIC" &
 PID2=$!
 
-echo "  Launching Explorer..."
-run_agent "$PROMPT_DIR/r1_explorer.txt" "$OUT_DIR/r1_explorer.md" &
+echo "  Launching Explorer ($MODEL_EXPLORER)..."
+run_agent "$PROMPT_DIR/r1_explorer.txt" "$OUT_DIR/r1_explorer.md" "$MODEL_EXPLORER" &
 PID3=$!
 
 echo ""
@@ -195,16 +218,16 @@ Your job:
     cat "$OUT_DIR/r1_skeptic.md" 2>/dev/null
 } > "$PROMPT_DIR/r2_explorer.txt"
 
-echo "  Architect responding..."
-run_agent "$PROMPT_DIR/r2_architect.txt" "$OUT_DIR/r2_architect.md" &
+echo "  Architect responding ($MODEL_ARCHITECT)..."
+run_agent "$PROMPT_DIR/r2_architect.txt" "$OUT_DIR/r2_architect.md" "$MODEL_ARCHITECT" &
 PID1=$!
 
-echo "  Skeptic responding..."
-run_agent "$PROMPT_DIR/r2_skeptic.txt" "$OUT_DIR/r2_skeptic.md" &
+echo "  Skeptic responding ($MODEL_SKEPTIC)..."
+run_agent "$PROMPT_DIR/r2_skeptic.txt" "$OUT_DIR/r2_skeptic.md" "$MODEL_SKEPTIC" &
 PID2=$!
 
-echo "  Explorer responding..."
-run_agent "$PROMPT_DIR/r2_explorer.txt" "$OUT_DIR/r2_explorer.md" &
+echo "  Explorer responding ($MODEL_EXPLORER)..."
+run_agent "$PROMPT_DIR/r2_explorer.txt" "$OUT_DIR/r2_explorer.md" "$MODEL_EXPLORER" &
 PID3=$!
 
 echo ""
@@ -281,8 +304,8 @@ One paragraph: position vs leaderboard, most promising path, biggest risk.
 SYNTH_FORMAT
 } > "$PROMPT_DIR/synthesis.txt"
 
-echo "  Synthesizing..."
-run_agent "$PROMPT_DIR/synthesis.txt" "$OUT_DIR/synthesis.md"
+echo "  Synthesizing ($MODEL_SYNTHESIS)..."
+run_agent "$PROMPT_DIR/synthesis.txt" "$OUT_DIR/synthesis.md" "$MODEL_SYNTHESIS"
 echo "  ✓ Synthesis done"
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -310,7 +333,8 @@ cat "$OUT_DIR/synthesis.md"
     echo ""
     echo "## $(date '+%Y-%m-%d %H:%M') — $TOPIC"
     echo ""
-    echo "**Model:** $DEBATE_MODEL | **Rounds:** $ROUNDS | **Full output:** $OUT_DIR/"
+    echo "**Models:** Architect=$MODEL_ARCHITECT, Skeptic=$MODEL_SKEPTIC, Explorer=$MODEL_EXPLORER, Synthesis=$MODEL_SYNTHESIS"
+    echo "**Rounds:** $ROUNDS | **Full output:** $OUT_DIR/"
     echo ""
     cat "$OUT_DIR/synthesis.md"
     echo ""
