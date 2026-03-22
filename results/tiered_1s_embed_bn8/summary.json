@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 4.16280594,
+    "val_loss": 7.02872394
+  },
+  "generated_at_utc": "2026-03-22T14:37:17+00:00",
+  "int8_zlib_model_bytes": 14946,
+  "int8_zlib_total_submission_bytes": 99410,
+  "last_eval": {
+    "max_steps": 1,
+    "step": 1,
+    "val_bpb": 4.1628,
+    "val_loss": 7.0287
+  },
+  "run_id": "tiered_1s_embed_bn8"
+}

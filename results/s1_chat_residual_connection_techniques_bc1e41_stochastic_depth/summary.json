@@ -1,0 +1,11 @@
+{
+  "run_id": "s1_chat_residual_connection_techniques_bc1e41_stochastic_depth",
+  "steps": 1,
+  "elapsed_s": 0.25,
+  "train_loss": 6.9374,
+  "n_params": 17059912,
+  "arch": "Add stochastic depth with 0.1 drop rate",
+  "overrides": {
+    "stoch_depth_rate": 0.1
+  }
+}
