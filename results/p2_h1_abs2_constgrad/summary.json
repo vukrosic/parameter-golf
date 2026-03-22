@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.59565071,
+    "val_loss": 2.69418939
+  },
+  "generated_at_utc": "2026-03-20T23:23:26+00:00",
+  "int8_zlib_model_bytes": 11733062,
+  "int8_zlib_total_submission_bytes": 11808748,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.593,
+    "val_loss": 2.6896
+  },
+  "run_id": "p2_h1_abs2_constgrad"
+}

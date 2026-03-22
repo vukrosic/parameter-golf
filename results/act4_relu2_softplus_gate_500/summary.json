@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.5131793,
+    "val_loss": 2.55493986
+  },
+  "generated_at_utc": "2026-03-19T16:50:59+00:00",
+  "int8_zlib_model_bytes": 12977509,
+  "int8_zlib_total_submission_bytes": 13034450,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.5123,
+    "val_loss": 2.5534
+  },
+  "run_id": "act4_relu2_softplus_gate_500"
+}

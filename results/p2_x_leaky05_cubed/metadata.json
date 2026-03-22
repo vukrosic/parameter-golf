@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "p2_x_leaky05_cubed",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-21T04:31:30+00:00",
+  "git": {
+    "commit": "635ba94c8e552d9aa08be5fcc3497a0d672730e4",
+    "commit_short": "635ba94",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.144",
+      "memory_total": "24576 MiB",
+      "name": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "log_path": "logs/p2_x_leaky05_cubed.txt",
+  "run_id": "p2_x_leaky05_cubed"
+}

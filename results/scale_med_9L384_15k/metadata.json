@@ -1,0 +1,32 @@
+{
+  "config": {
+    "ITERATIONS": "15000",
+    "MAX_WALLCLOCK_SECONDS": "58650",
+    "MLP_MULT": "2",
+    "MODEL_DIM": "384",
+    "NUM_HEADS": "6",
+    "NUM_KV_HEADS": "3",
+    "NUM_LAYERS": "9",
+    "RUN_ID": "scale_med_9L384_15k",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50",
+    "WARMDOWN_ITERS": "1300"
+  },
+  "generated_at_utc": "2026-03-22T01:03:06+00:00",
+  "git": {
+    "commit": "876a408d9d7be8bc02b9521e997814008f5ef307",
+    "commit_short": "876a408",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "580.126.09",
+      "memory_total": "32607 MiB",
+      "name": "NVIDIA GeForce RTX 5090"
+    }
+  },
+  "log_path": "logs/scale_med_9L384_15k.txt",
+  "run_id": "scale_med_9L384_15k"
+}

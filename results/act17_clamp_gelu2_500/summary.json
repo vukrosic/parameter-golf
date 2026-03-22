@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.48161701,
+    "val_loss": 2.50164826
+  },
+  "generated_at_utc": "2026-03-20T04:03:19+00:00",
+  "int8_zlib_model_bytes": 13117348,
+  "int8_zlib_total_submission_bytes": 13179663,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.4809,
+    "val_loss": 2.5004
+  },
+  "run_id": "act17_clamp_gelu2_500"
+}

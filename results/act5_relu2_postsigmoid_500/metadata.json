@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "act5_relu2_postsigmoid_500",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-19T17:23:42+00:00",
+  "git": {
+    "commit": "8c9f526b7bd0e03fd30b9b840453c0206302ddea",
+    "commit_short": "8c9f526",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/act5_relu2_postsigmoid_500.txt",
+  "run_id": "act5_relu2_postsigmoid_500"
+}
