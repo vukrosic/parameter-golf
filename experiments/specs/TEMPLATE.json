@@ -1,0 +1,13 @@
+{
+  "config_overrides": {},
+  "desired_state": "draft",
+  "linked_docs": [],
+  "name": "Describe the experiment",
+  "notes": "",
+  "spec_id": "template_spec",
+  "spec_type": "exploration",
+  "stage": "explore",
+  "steps": 500,
+  "tags": [],
+  "template": "parameter_golf"
+}

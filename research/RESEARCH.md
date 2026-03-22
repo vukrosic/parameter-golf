@@ -2,6 +2,8 @@
 
 Research is organized in three stages: **Explorations** (free-form probing), **Hypotheses** (formal testable claims), and **Findings** (publication-ready results).
 
+Runnable experiment definitions live in [`../experiments/specs/`](../experiments/specs/). Those specs link back to the docs below and are indexed by `auto-research` for scheduling and web control.
+
 ## Findings (Published)
 
 | ID | Title | Status | Hypotheses |
