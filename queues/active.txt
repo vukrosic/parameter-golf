@@ -23,3 +23,6 @@ exp30_qkgain1_4k 4000 NUM_EXPERTS=4 MLP_ACT=leaky_relu2_05 MODEL_DIM=384 NUM_HEA
 
 # === Seed variants for best performer (fill in after first pass) ===
 # exp30_<best>_s42_4k 4000 ... SEED=42
+# MOE 4e validation
+val_moe4e_s1337_4k 4000 NUM_EXPERTS=4 SEED=1337 CHECKPOINT_EVERY=500 VAL_LOSS_EVERY=50
+val_moe4e_s42_4k 4000 NUM_EXPERTS=4 SEED=42 CHECKPOINT_EVERY=500 VAL_LOSS_EVERY=50
