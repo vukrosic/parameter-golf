@@ -113,10 +113,44 @@ Gap to close:  ~0.10+ BPB (awaiting 13k results)
     MoE4e + bn128u + leaky + QAT: IN PROGRESS (13k)
 ```
 
+## Core Research Principle: Tiered Elimination
+
+**The central method for all architecture search in this repo.**
+
+Run many ideas cheaply. Kill losers early. Scale only survivors. Never spend full compute on an unscreened idea.
+
+### The Rule
+
+> If an architecture doesn't beat the baseline at short duration, it almost certainly won't beat it at long duration. The 1s ranking predicts the 3s ranking. Trust the ladder.
+
+### How It Works
+
+1. **Screen wide** — run 10–15 architecture variants at the shortest budget (1s / ~1 step). Most ideas die here.
+2. **Promote narrow** — take the top 5 and re-run at 2x duration. The noise floor drops; weak ideas that looked good at 1s get exposed.
+3. **Finalize** — top 3 at 3x duration. Only run full experiments (500+ steps) on these finalists.
+4. **Write the report** — always output `results/tiered_screen_<date>.md` with three markdown tables (one per stage), delta vs. baseline, and a conclusion.
+
+### Why This Works
+
+- CUDA/Python startup is constant overhead — amortize it by running all variants in a **single process** (see `infra/tiered_screen.py`).
+- Each step is a noisy signal. More steps = less noise. The ladder buys signal incrementally instead of all at once.
+- Elimination is irreversible by default — don't re-promote dropped candidates without new evidence.
+
+### Implementation
+
+- Use `infra/tiered_screen.py` for in-process screening (fast, no per-run startup cost).
+- Use `infra/run_queue.sh` + `queues/tiered_duration_*.txt` for GPU-deployed runs.
+- Report file: `results/tiered_screen_<date>.md`
+- Use `/tiered-screen` skill to orchestrate.
+
+---
+
 ## Research Pipeline
 
 | Stage | Steps | Time (reference single-GPU) | Purpose | Threshold to advance |
 |-------|------:|-------------|---------|---------------------|
+| Tiered Screen (1s) | ~1 | seconds | Eliminate bad ideas | beat baseline delta |
+| Tiered Screen (3s) | ~3 | seconds | Confirm finalists | consistent delta across stages |
 | Explore | 500 | ~28 min | Screen many ideas fast | >0.01 BPB improvement |
 | Validate | 2000 | ~1.8 hr | Confirm explore winners | >0.005 BPB on 2+ seeds |
 | Scale | 5000 | ~4.6 hr | Near-final signal | Consistent improvement |
