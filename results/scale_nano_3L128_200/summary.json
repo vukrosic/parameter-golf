@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.96442716,
+    "val_loss": 3.31685298
+  },
+  "generated_at_utc": "2026-03-22T05:46:14+00:00",
+  "int8_zlib_model_bytes": 768731,
+  "int8_zlib_total_submission_bytes": 850384,
+  "last_eval": {
+    "max_steps": 200,
+    "step": 200,
+    "val_bpb": 1.9643,
+    "val_loss": 3.3166
+  },
+  "run_id": "scale_nano_3L128_200"
+}

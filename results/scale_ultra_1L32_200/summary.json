@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 2.57919614,
+    "val_loss": 4.35486465
+  },
+  "generated_at_utc": "2026-03-22T05:47:38+00:00",
+  "int8_zlib_model_bytes": 66166,
+  "int8_zlib_total_submission_bytes": 147819,
+  "last_eval": {
+    "max_steps": 200,
+    "step": 200,
+    "val_bpb": 2.5791,
+    "val_loss": 4.3547
+  },
+  "run_id": "scale_ultra_1L32_200"
+}
