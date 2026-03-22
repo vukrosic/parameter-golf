@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Collect results from all remote GPUs immediately.
-# Usage: bash collect_results.sh
+# Collect results from all remote GPUs (no git required).
+# Transport: tar | ssh pipe in both directions — zero dependencies on remote.
+#
+# Usage: bash collect_results.sh [GPU_NAME]
+#   No arg: collect from all GPUs
+#   GPU_NAME: collect from specific GPU only
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -9,66 +14,63 @@ FLEET_SCRIPTS="$REPO_ROOT/.claude/skills/fleet/scripts"
 
 cd "$REPO_ROOT"
 
-echo "=== Collecting results from all GPUs @ $(date) ==="
+TARGET_GPU="${1:-}"
 
-# Count summary.json files before sync (flat + nested)
+echo "=== Collecting results @ $(date) ==="
+
 count_results() {
-    { ls results/*/summary.json 2>/dev/null; ls results/*/*/summary.json 2>/dev/null; } | wc -l
+    { find results -maxdepth 2 -name 'summary.json' 2>/dev/null; \
+      find results -maxdepth 3 -name 'summary.json' 2>/dev/null; } | sort -u | wc -l
 }
 BEFORE=$(count_results)
 
-# Commit and push from each remote GPU
+source "$REPO_ROOT/infra/gpu_creds.sh"
+SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=12 -o LogLevel=ERROR"
+
+collect_gpu() {
+    local name="$1" port="$2" pass="$3"
+    export SSHPASS="$pass"
+
+    # Auto-detect remote repo path
+    REMOTE_REPO=$(sshpass -e ssh $SSH_OPTS -p "$port" root@"$HOST" \
+        'if [ -d /root/parameter-golf ]; then echo /root/parameter-golf; elif [ -d ~/parameter-golf ]; then echo ~/parameter-golf; else echo .; fi' 2>/dev/null) || { echo "  $name: OFFLINE"; return; }
+
+    # Pull all result files via tar pipe (bash -s with cd ensures correct working dir)
+    PULLED=$(sshpass -e ssh $SSH_OPTS -p "$port" root@"$HOST" "bash -s" 2>/dev/null <<SSHEOF | tar xzf - -C "$REPO_ROOT/" 2>/dev/null && echo ok || echo fail
+cd "$REMOTE_REPO"
+find results -name 'summary.json' -o -name 'metadata.json' -o -name 'config.json' | tar czf - -T - 2>/dev/null
+SSHEOF
+    )
+
+    echo "  $name: collected ($PULLED)"
+}
+
 while IFS= read -r line; do
     name=$(echo "$line" | awk '{print $1}')
     port=$(echo "$line" | awk '{print $2}')
     pass=$(echo "$line" | awk '{print $3}')
+    [ -n "$TARGET_GPU" ] && [ "$name" != "$TARGET_GPU" ] && continue
     echo "--- $name ---"
-    bash "$FLEET_SCRIPTS/ssh_run.sh" "$port" "$pass" '
-        cd ~/parameter-golf 2>/dev/null || cd ~/param* 2>/dev/null || true
-        # Stage all result summary/metadata files (flat and nested)
-        git add results/*/summary.json results/*/metadata.json results/*/config.json 2>/dev/null || true
-        git add results/*/*/summary.json results/*/*/metadata.json results/*/*/config.json 2>/dev/null || true
-        if git diff --cached --quiet 2>/dev/null; then
-            echo "  (nothing new)"
-        else
-            HOSTNAME_SHORT=$(hostname | cut -d. -f1)
-            git commit -m "results($HOSTNAME_SHORT): auto-sync $(date +%Y-%m-%d_%H:%M)" 2>&1 | tail -1
-            git push origin lab 2>&1 | tail -1 || echo "  PUSH FAILED"
-        fi
-    ' 2>/dev/null || echo "  OFFLINE — skipped"
+    collect_gpu "$name" "$port" "$pass"
 done < <("$FLEET_SCRIPTS/discover_gpus.sh")
 
-# Pull everything locally
-echo "--- local pull ---"
-git pull origin lab 2>&1 | tail -3 || echo "PULL FAILED"
-
-# Commit and push any local results not yet committed
-git add results/*/summary.json results/*/metadata.json results/*/config.json 2>/dev/null || true
-git add results/*/*/summary.json results/*/*/metadata.json results/*/*/config.json 2>/dev/null || true
+# Commit any new local results
+git add results/ -A 2>/dev/null || true
 if ! git diff --cached --quiet 2>/dev/null; then
-    git commit -m "results(local): auto-sync $(date +%Y-%m-%d_%H:%M)"
-    git push origin lab 2>&1 | tail -1 || echo "LOCAL PUSH FAILED"
+    git commit -m "results: collect from fleet $(date +%Y-%m-%d_%H:%M)"
+    echo "Committed new results locally."
 fi
 
-# Pull on all remotes so they get the latest
-while IFS= read -r line; do
-    port=$(echo "$line" | awk '{print $2}')
-    pass=$(echo "$line" | awk '{print $3}')
-    bash "$FLEET_SCRIPTS/ssh_run.sh" "$port" "$pass" 'cd ~/parameter-golf 2>/dev/null || cd ~/param* 2>/dev/null; git pull origin lab 2>/dev/null' &
-done < <("$FLEET_SCRIPTS/discover_gpus.sh")
-wait
-
-# Count after sync
 AFTER=$(count_results)
 NEW=$((AFTER - BEFORE))
-
 echo ""
-echo "=== Done: $NEW new experiment(s) synced ==="
+echo "=== Done: $NEW new result(s) ==="
 if [ "$NEW" -gt 0 ]; then
-    echo "New results (most recent first):"
-    { ls -t results/*/summary.json 2>/dev/null; ls -t results/*/*/summary.json 2>/dev/null; } | head -"$NEW" | while read -r f; do
-        expname=$(basename "$(dirname "$f")")
-        bpb=$(python3 -c "import json; d=json.load(open('$f')); print(d.get('last_eval',{}).get('val_bpb', d.get('val_bpb','?')))" 2>/dev/null || echo "?")
-        echo "  $expname — val_bpb: $bpb"
+    { find results -maxdepth 2 -name 'summary.json'; \
+      find results -maxdepth 3 -name 'summary.json'; } \
+    | sort -u | xargs ls -t 2>/dev/null | head -"$NEW" | while read -r f; do
+        exp=$(basename "$(dirname "$f")")
+        bpb=$(python3 -c "import json; d=json.load(open('$f')); print(d.get('last_eval',{}).get('val_bpb','?'))" 2>/dev/null || echo "?")
+        echo "  $exp — $bpb bpb"
     done
 fi
