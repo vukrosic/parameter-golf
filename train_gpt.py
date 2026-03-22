@@ -106,6 +106,16 @@ class Hyperparameters:
     num_experts = int(os.environ.get("NUM_EXPERTS", "0"))
     qat_start_frac = float(os.environ.get("QAT_START_FRAC", "0.0"))
 
+    # Residual connection experiments
+    # RESID_SCALE_INIT: initial value for attn_scale/mlp_scale (1.0=default, 0.1=LayerScale, 0.0=ReZero)
+    resid_scale_init = float(os.environ.get("RESID_SCALE_INIT", "1.0"))
+    # STOCH_DEPTH_RATE: drop-path probability per block during training (0.0=disabled)
+    stoch_depth_rate = float(os.environ.get("STOCH_DEPTH_RATE", "0.0"))
+    # HIGHWAY_NET: replace fixed attn/mlp_scale with input-dependent sigmoid gate (dim→1 linear)
+    highway_net = bool(int(os.environ.get("HIGHWAY_NET", "0")))
+    # SKIP_WEIGHT_INIT: initial value for U-net encoder→decoder skip weights (1.0=default, 0.0=learn from scratch)
+    skip_weight_init = float(os.environ.get("SKIP_WEIGHT_INIT", "1.0"))
+
 # -----------------------------
 # MUON OPTIMIZER 
 # -----------------------------
@@ -1142,6 +1152,9 @@ class Block(nn.Module):
         act_gate_floor: float = 0.5,
         conv_kernel: int = 0,
         num_experts: int = 0,
+        resid_scale_init: float = 1.0,
+        stoch_depth_rate: float = 0.0,
+        highway_net: bool = False,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
@@ -1151,12 +1164,26 @@ class Block(nn.Module):
             self.mlp = SoftMoE(dim, mlp_mult, num_experts, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
         else:
             self.mlp = MLP(dim, mlp_mult, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
-        self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
-        self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
+        self.attn_scale = nn.Parameter(torch.full((dim,), resid_scale_init, dtype=torch.float32))
+        self.mlp_scale = nn.Parameter(torch.full((dim,), resid_scale_init, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
         self.conv = None
         if conv_kernel > 0:
             self.conv = nn.Conv1d(dim, dim, conv_kernel, padding=conv_kernel - 1, groups=dim, bias=False)
+        self.stoch_depth_rate = stoch_depth_rate
+        # Highway: input-dependent gate (dim→1 linear, cheap: O(dim) params per gate)
+        self.highway_gate_attn = CastedLinear(dim, 1, bias=True) if highway_net else None
+        self.highway_gate_mlp = CastedLinear(dim, 1, bias=True) if highway_net else None
+
+    def _drop_path(self, contrib: Tensor) -> Tensor:
+        """Stochastic depth: drop entire residual contribution with probability stoch_depth_rate."""
+        if not self.training or self.stoch_depth_rate == 0.0:
+            return contrib
+        keep_prob = 1.0 - self.stoch_depth_rate
+        # Per-sample mask: shape (B, 1, 1) so full sequence is kept or dropped together
+        mask = torch.rand(contrib.size(0), 1, 1, device=contrib.device, dtype=contrib.dtype)
+        mask = (mask < keep_prob).to(contrib.dtype) / keep_prob
+        return contrib * mask
 
     def forward(self, x: Tensor, x0: Tensor, attn_residual: Tensor | None = None, v_residual: Tensor | None = None, return_v: bool = False) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
         mix = self.resid_mix.to(dtype=x.dtype)
@@ -1169,8 +1196,18 @@ class Block(nn.Module):
             attn_out, v0 = self.attn(self.attn_norm(x), v_residual=v_residual, return_v=True)
         else:
             attn_out = self.attn(self.attn_norm(x), v_residual=v_residual)
-        x = x + self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
-        x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(self.mlp_norm(x))
+        if self.highway_gate_attn is not None:
+            # Input-dependent gate: scalar per token (dim→1), replaces fixed attn_scale
+            gate_a = torch.sigmoid(self.highway_gate_attn(x))  # (B, S, 1)
+            x = x + self._drop_path(gate_a * attn_out)
+        else:
+            x = x + self._drop_path(self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out)
+        mlp_out = self.mlp(self.mlp_norm(x))
+        if self.highway_gate_mlp is not None:
+            gate_m = torch.sigmoid(self.highway_gate_mlp(x))  # (B, S, 1)
+            x = x + self._drop_path(gate_m * mlp_out)
+        else:
+            x = x + self._drop_path(self.mlp_scale.to(dtype=x.dtype)[None, None, :] * mlp_out)
         if return_v:
             return x, attn_out, v0
         return x, attn_out
@@ -1199,6 +1236,10 @@ class GPT(nn.Module):
         num_cycles: int = 1,
         conv_kernel: int = 0,
         num_experts: int = 0,
+        resid_scale_init: float = 1.0,
+        stoch_depth_rate: float = 0.0,
+        highway_net: bool = False,
+        skip_weight_init: float = 1.0,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -1228,7 +1269,7 @@ class GPT(nn.Module):
             self.num_encoder_layers = num_layers // 2
             self.num_decoder_layers = num_layers - self.num_encoder_layers
             self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
-            self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
+            self.skip_weights = nn.Parameter(torch.full((self.num_skip_weights, model_dim), skip_weight_init, dtype=torch.float32))
         use_v_gate = attnres_mode == "value_residual_gated"
         self.blocks = nn.ModuleList(
             [
@@ -1245,6 +1286,9 @@ class GPT(nn.Module):
                     act_gate_floor=act_gate_floor,
                     conv_kernel=conv_kernel,
                     num_experts=num_experts,
+                    resid_scale_init=resid_scale_init,
+                    stoch_depth_rate=stoch_depth_rate,
+                    highway_net=highway_net,
                 )
                 for i in range(actual_blocks)
             ]
@@ -1466,6 +1510,10 @@ def main() -> None:
         num_cycles=args.num_cycles,
         conv_kernel=args.conv_kernel,
         num_experts=args.num_experts,
+        resid_scale_init=args.resid_scale_init,
+        stoch_depth_rate=args.stoch_depth_rate,
+        highway_net=args.highway_net,
+        skip_weight_init=args.skip_weight_init,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):

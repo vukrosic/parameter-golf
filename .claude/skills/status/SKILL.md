@@ -14,9 +14,9 @@ Show detailed training progress for running experiments.
 bash .claude/skills/status/scripts/check_status.sh
 ```
 
-### Specific GPU (e.g., `/status L40S`)
+### Specific GPU (e.g., `/status ARCH1`)
 ```bash
-bash .claude/skills/status/scripts/check_status.sh L40S
+bash .claude/skills/status/scripts/check_status.sh ARCH1
 ```
 
 ### If user asks for log output

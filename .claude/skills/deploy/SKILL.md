@@ -16,7 +16,7 @@ description: Deploy experiments to GPU fleet. Push a queue file or individual ex
    bash .claude/skills/deploy/scripts/deploy_queue.sh <GPU_NAME> <queue_file>
    ```
 
-### Deploying a single experiment (e.g., `/deploy my_test 500 MLP_ACT=relu2 to L40S`)
+### Deploying a single experiment (e.g., `/deploy my_test 500 MLP_ACT=relu2 to ARCH1`)
 
 1. Parse the experiment name, steps, env vars, and target GPU from user args.
 2. Run:

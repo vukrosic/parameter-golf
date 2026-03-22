@@ -37,7 +37,6 @@ while IFS='=' read -r key val; do
     [[ -z "$port" || -z "$pass" ]] && continue
     case "$gname" in
         *3090*) label="REMOTE 3090" ;;
-        *L40S*) label="L40S"        ;;
         *5090*) label="RTX 5090"    ;;
         *)      label="$gname"      ;;
     esac

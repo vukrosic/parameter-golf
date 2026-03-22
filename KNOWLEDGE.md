@@ -42,7 +42,7 @@ Last updated: 2026-03-21
 - **Baseline model**: 9L, 512dim, 8 heads (4 KV), 1024 vocab, tied embeddings, ~17M params → 12.6 MB submission
 - **Submission limit**: 16 MB (int8 zlib-compressed). All architecture choices must respect this.
 - **Leaderboard baseline**: 1.2244 BPB (8xH100, 600s)
-- **Our best L40S result**: relu² at 13k steps → 1.2498 post-quant BPB
+- **Our best legacy single-GPU result**: relu² at 13k steps → 1.2498 post-quant BPB
 
 10. **MoE 4-expert fits under 16 MB at dim=384.** At dim=512, 4 experts → 24.7 MB (too large). At dim=384 (6 heads, 3 KV): 15.0M params → 14.2 MB ✓. At dim=400 (8 heads, 4 KV): 16.3M params → 15.3 MB ✓. dim=384 is the sweet spot (most room for extras like bn128).
 
@@ -115,7 +115,7 @@ Gap to close:  ~0.10+ BPB (awaiting 13k results)
 
 ## Research Pipeline
 
-| Stage | Steps | Time (L40S) | Purpose | Threshold to advance |
+| Stage | Steps | Time (reference single-GPU) | Purpose | Threshold to advance |
 |-------|------:|-------------|---------|---------------------|
 | Explore | 500 | ~28 min | Screen many ideas fast | >0.01 BPB improvement |
 | Validate | 2000 | ~1.8 hr | Confirm explore winners | >0.005 BPB on 2+ seeds |

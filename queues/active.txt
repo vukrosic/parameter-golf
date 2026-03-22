@@ -1,1 +1,51 @@
+# Wave 30: Residual Connection Architecture Experiments
+# Research questions: does residual init, input-dep gating, skip structure, or attn accumulation matter?
+# All 500-step explores. Baseline BPB ~1.4522. Best config (MoE4e+bn128u+leaky d384) ~unknown at 500.
+# Advance threshold: >0.01 BPB improvement over comparable baseline.
 
+# --- CONTROL: baseline at 500 steps (for comparison) ---
+resid_ctrl_500 500
+
+# --- GROUP A: Attention residual accumulation modes (no code changes needed) ---
+# Cumulative attention sum across all layers as extra residual signal
+resid_cumsum_500 500 ATTNRES_MODE=cumsum
+# First-layer value vectors propagated to all deeper layers
+resid_vr_500 500 ATTNRES_MODE=value_residual
+
+# --- GROUP B: Residual scale initialization (RESID_SCALE_INIT) ---
+# LayerScale (0.1): small init so residuals grow gradually. Used in ViT-22B, CoCa.
+resid_layerscale01_500 500 RESID_SCALE_INIT=0.1
+# LayerScale very small (0.01): extreme case — near-identity start
+resid_layerscale001_500 500 RESID_SCALE_INIT=0.01
+# ReZero (0.0): start as pure identity, learn residual contribution from scratch
+resid_rezero_500 500 RESID_SCALE_INIT=0.0
+
+# --- GROUP C: U-net skip connection init (SKIP_WEIGHT_INIT) ---
+# Zero init: skip connections start at 0, learned from scratch (ReZero for skips)
+resid_skipzero_500 500 SKIP_WEIGHT_INIT=0.0
+# Strong skips (2.0): double the skip strength at init
+resid_skipstrong_500 500 SKIP_WEIGHT_INIT=2.0
+
+# --- GROUP D: Highway gating (input-dependent gate, replaces fixed attn/mlp_scale) ---
+resid_highway_500 500 HIGHWAY_NET=1
+
+# --- GROUP E: Stochastic depth (drop path regularization) ---
+# Note: regularization effects need longer runs to measure properly; 500 steps tests stability
+resid_stochdepth01_500 500 STOCH_DEPTH_RATE=0.1
+resid_stochdepth02_500 500 STOCH_DEPTH_RATE=0.2
+
+# --- GROUP F: Best config (MoE4e + bn128u + leaky d384) + residual variants ---
+# Best config baseline at 500 steps
+resid_moe_ctrl_500 500 NUM_EXPERTS=4 MLP_ACT=leaky_relu2_05 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 EMBED_BOTTLENECK=128 TIE_EMBEDDINGS=0
+# Best config + cumsum
+resid_moe_cumsum_500 500 NUM_EXPERTS=4 MLP_ACT=leaky_relu2_05 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 EMBED_BOTTLENECK=128 TIE_EMBEDDINGS=0 ATTNRES_MODE=cumsum
+# Best config + value_residual
+resid_moe_vr_500 500 NUM_EXPERTS=4 MLP_ACT=leaky_relu2_05 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 EMBED_BOTTLENECK=128 TIE_EMBEDDINGS=0 ATTNRES_MODE=value_residual
+# Best config + LayerScale 0.1
+resid_moe_ls01_500 500 NUM_EXPERTS=4 MLP_ACT=leaky_relu2_05 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 EMBED_BOTTLENECK=128 TIE_EMBEDDINGS=0 RESID_SCALE_INIT=0.1
+# Best config + ReZero
+resid_moe_rezero_500 500 NUM_EXPERTS=4 MLP_ACT=leaky_relu2_05 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 EMBED_BOTTLENECK=128 TIE_EMBEDDINGS=0 RESID_SCALE_INIT=0.0
+# Best config + highway gating
+resid_moe_highway_500 500 NUM_EXPERTS=4 MLP_ACT=leaky_relu2_05 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 EMBED_BOTTLENECK=128 TIE_EMBEDDINGS=0 HIGHWAY_NET=1
+# Best config + zero skip init (learn skips from scratch)
+resid_moe_skipzero_500 500 NUM_EXPERTS=4 MLP_ACT=leaky_relu2_05 MODEL_DIM=384 NUM_HEADS=6 NUM_KV_HEADS=3 EMBED_BOTTLENECK=128 TIE_EMBEDDINGS=0 SKIP_WEIGHT_INIT=0.0

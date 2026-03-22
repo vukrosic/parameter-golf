@@ -8,7 +8,7 @@ echo "========================================"
 echo "Phase H2: 8xH100 Baseline Validation"
 echo "========================================"
 
-# H2a: Step-matched 500-step run (compare directly with L40S baseline_500)
+# H2a: Step-matched 500-step run (compare directly with the legacy baseline_500)
 echo ""
 echo "--- H2a: 500 steps, step-based schedule ---"
 RUN_ID=h2_baseline_500 ITERATIONS=500 VAL_LOSS_EVERY=50 TRAIN_LOG_EVERY=100 \

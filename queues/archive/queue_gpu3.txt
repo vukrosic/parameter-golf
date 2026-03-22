@@ -1,4 +1,4 @@
-# GPU 3 (L40S) queue — TIER 1 + TIER 2 first half + TIER 3
+# GPU 3 queue (legacy L40S slot) — TIER 1 + TIER 2 first half + TIER 3
 
 # TIER 1: Full-length 13k runs
 p2_leaky05_gradfloor_13k_s42 13780 MLP_ACT=leaky05_gradfloor SEED=42 CHECKPOINT_EVERY=1000

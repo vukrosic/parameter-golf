@@ -2,7 +2,7 @@
 
 ## Development Hardware
 
-- **1x NVIDIA L40S** (48GB VRAM)
+- **1x reference single-GPU benchmark machine** (48GB VRAM class)
 - All experiments run single-GPU with grad_accum=8 (automatic)
 - Step dynamics identical to 8xH100 (same effective batch)
 
@@ -12,13 +12,13 @@ Every experiment is a single invocation of `train_gpt.py` (or a fork) with env v
 Use `infra/run_experiment.sh` for standardized runs:
 
 ```bash
-# Quick sanity check (50 steps, ~2.5 min on L40S)
+# Quick sanity check (50 steps, ~2.5 min on the reference benchmark machine)
 infra/run_experiment.sh my_test_name 50
 
 # Medium run (200 steps, ~11 min)
 infra/run_experiment.sh my_test_name 200
 
-# Full L40S equivalent of 600s 8xH100 (13780 steps ≈ 12.7 hours)
+# Full 600s 8xH100 equivalent (13780 steps ≈ 12.7 hours)
 infra/run_experiment.sh my_test_name 13780
 
 # With custom env overrides
@@ -47,7 +47,7 @@ MAX_FILE_MB=50 git commit -m "..."
 
 ## Experiment Duration Guide
 
-On 1xL40S at ~3.33s/step:
+On the reference single-GPU benchmark machine at ~3.33s/step:
 
 | Steps | Wall-clock | Equivalent 8xH100 time | Use for |
 |-------|-----------|------------------------|---------|

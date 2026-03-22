@@ -44,7 +44,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     # Run experiment
     export RUN_ID="${NAME}"
     export ITERATIONS="${STEPS}"
-    # Use step-based termination on 3090 (not L40S timing)
+    # Use step-based termination on the local benchmark machine
     WALLCLOCK=$(python3 -c "import math; print(math.ceil(${STEPS} * 3.0 * 1.25))")
     export MAX_WALLCLOCK_SECONDS="${WALLCLOCK}"
     export VAL_LOSS_EVERY="${VAL_LOSS_EVERY:-50}"

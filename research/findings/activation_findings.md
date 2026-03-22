@@ -107,7 +107,7 @@ This table shows the same activations tracked across every available checkpoint 
 
 The gap starts at -0.010 (500 steps) and stabilizes at -0.003 (2000+ steps). The early exaggeration is because abs² and leaky² both have higher init-scale output variance than relu², inflating early differences. The stable -0.003 at longer runs is the real signal.
 
-For reference, the 8xH100 record baseline is **1.2244 BPB** (13,780 steps). Our best L40S result is relu² at 13k: **1.2498 post-quant**.
+For reference, the 8xH100 record baseline is **1.2244 BPB** (13,780 steps). Our best legacy single-GPU result is relu² at 13k: **1.2498 post-quant**.
 
 ### 5. Short runs misrank activations
 

@@ -15,9 +15,22 @@ cd "$(dirname "$0")/.."
 NAME="${1:?Usage: infra/run_experiment.sh <name> <max_steps>}"
 MAX_STEPS="${2:?Usage: infra/run_experiment.sh <name> <max_steps>}"
 
-# Convert steps to approximate wall-clock seconds on L40S (~3.33s/step)
+# Auto-detect GPU and estimate wall-clock seconds per step.
+# Override with GPU_TIMING_PER_STEP env var for unlisted GPUs.
+if [ -z "${GPU_TIMING_PER_STEP:-}" ]; then
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | xargs || echo "")
+    case "$GPU_NAME" in
+        *3090*)  GPU_TIMING_PER_STEP=4.2 ;;
+        *L40*)   GPU_TIMING_PER_STEP=3.4 ;;
+        *5090*)  GPU_TIMING_PER_STEP=2.8 ;;
+        *A100*)  GPU_TIMING_PER_STEP=2.5 ;;
+        *H100*)  GPU_TIMING_PER_STEP=2.0 ;;
+        *)       GPU_TIMING_PER_STEP=3.4 ;;
+    esac
+    echo "Detected GPU: ${GPU_NAME:-unknown} -> ${GPU_TIMING_PER_STEP}s/step"
+fi
 # Add 15% buffer for validation + overhead
-WALLCLOCK=$(python3 -c "import math; print(math.ceil($MAX_STEPS * 3.4 * 1.15))")
+WALLCLOCK=$(python3 -c "import math; print(math.ceil($MAX_STEPS * $GPU_TIMING_PER_STEP * 1.15))")
 
 # Standardized settings for reproducible comparisons
 export RUN_ID="${NAME}"

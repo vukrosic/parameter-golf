@@ -22,7 +22,6 @@ This shows:
 
 ### Cost-per-step reference
 - RTX 3090: ~2700ms/step, $0.075/1k steps
-- L40S: ~950ms/step, $0.074/1k steps
 - RTX 5090: ~605ms/step, $0.050/1k steps
 
 ## Key Scripts

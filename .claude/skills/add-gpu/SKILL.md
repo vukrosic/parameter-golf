@@ -25,11 +25,9 @@ bash .claude/skills/add-gpu/scripts/add_gpu.sh <port> <password>
 ```
 
 ### Step 3: Add to gpu_creds.sh
-Append to `infra/gpu_creds.sh`:
+Register locally and sync to auto-research when available:
 ```bash
-# <LABEL> (added YYYY-MM-DD)
-GPU_<LABEL>_PORT=<port>
-GPU_<LABEL>_PASS="<password>"
+bash infra/register_gpu.sh <LABEL> <PORT> <PASSWORD> [RATE] [GPU_TYPE]
 ```
 
 ### Step 4: Setup the remote
@@ -47,7 +45,10 @@ bash .claude/skills/fleet/scripts/ssh_run.sh <port> <password> \
 ### Step 6: Update cost tracking
 Add the hourly rate to `.claude/skills/cost/scripts/cost_report.sh` RATES array.
 
-### Step 7: Confirm
+### Step 7: Register in auto-research platform DB
+`infra/register_gpu.sh` writes the local fallback registry and, when `/root/auto-research/auto_research.db` is present, also upserts the same GPU into the platform DB. This keeps both sources aligned without making parameter-golf depend on the platform being online.
+
+### Step 8: Confirm
 Run `/fleet` to verify the new GPU appears in the fleet status.
 
 ## Key Scripts

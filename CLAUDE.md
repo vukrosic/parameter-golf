@@ -121,7 +121,7 @@ Three debate types select different agent combinations:
 - **Scale** (Architect + Challenger + Optimizer): Validate/scale winners
 - **Pivot** (all 5 agents): Strategic reassessment when stuck
 
-| Stage | Steps | Time (L40S) | Purpose | Advance if |
+| Stage | Steps | Time (reference single-GPU) | Purpose | Advance if |
 |-------|------:|-------------|---------|------------|
 | Explore | 500 | ~28 min | Screen many ideas fast | >0.01 BPB improvement |
 | Validate-light | 2000 | ~1.8 hr | Quick confirmation | >0.005 BPB on 2+ seeds |

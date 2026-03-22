@@ -46,7 +46,7 @@ Payments via Skool initially, manual user provisioning. Keep it cheap to build c
 | **Pro** | $79 | Unlimited explore, 100 validate + 5 full runs/mo, dedicated GPU time slots, API access |
 | **Team** | $149 | Everything in Pro, 3 seats, shared results, team dashboard |
 
-> Actual GPU cost per run (L40S): explore ~$0.50, validate ~$2-5, full ~$12.
+> Actual GPU cost per run (legacy single-GPU reference): explore ~$0.50, validate ~$2-5, full ~$12.
 > At these prices Starter/Researcher tiers are profitable even at full usage.
 > Pro tier needs usage monitoring — heavy users could exceed margin.
 

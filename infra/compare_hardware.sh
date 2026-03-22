@@ -1,6 +1,6 @@
 #!/bin/bash
-# Compare val_bpb between L40S and H100 runs at matched step counts
-# Usage: bash infra/compare_hardware.sh logs/l40s_run.txt logs/h100_run.txt
+# Compare val_bpb between a legacy reference run and H100 runs at matched step counts
+# Usage: bash infra/compare_hardware.sh logs/reference_run.txt logs/h100_run.txt
 #
 # Extracts val_bpb at each logged step and computes:
 #   - Side-by-side comparison
@@ -9,11 +9,11 @@
 
 set -e
 
-L40S_LOG=${1:?Usage: $0 <l40s_log> <h100_log>}
-H100_LOG=${2:?Usage: $0 <l40s_log> <h100_log>}
+REF_LOG=${1:?Usage: $0 <reference_log> <h100_log>}
+H100_LOG=${2:?Usage: $0 <reference_log> <h100_log>}
 
 echo "=== Cross-Hardware Comparison ==="
-echo "L40S: $L40S_LOG"
+echo "Reference: $REF_LOG"
 echo "H100: $H100_LOG"
 echo ""
 
@@ -23,10 +23,10 @@ extract_bpb() {
         paste - - | sort -n
 }
 
-echo "Step | L40S_BPB | H100_BPB | Delta"
+echo "Step | REF_BPB | H100_BPB | Delta"
 echo "-----|----------|----------|------"
 
-paste <(extract_bpb "$L40S_LOG") <(extract_bpb "$H100_LOG") | \
+paste <(extract_bpb "$REF_LOG") <(extract_bpb "$H100_LOG") | \
 while read step1 bpb1 step2 bpb2; do
     if [ "$step1" = "$step2" ]; then
         delta=$(python3 -c "print(f'{abs($bpb1 - $bpb2):.4f}')")
@@ -40,7 +40,7 @@ echo ""
 echo "=== Summary ==="
 
 # Compute max delta
-paste <(extract_bpb "$L40S_LOG") <(extract_bpb "$H100_LOG") | \
+paste <(extract_bpb "$REF_LOG") <(extract_bpb "$H100_LOG") | \
 python3 -c "
 import sys
 max_delta = 0

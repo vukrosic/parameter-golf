@@ -42,7 +42,7 @@ PHASE 4: FULL (13780 steps) ─────────────────�
 
 ## Step Counts & When to Use
 
-| Phase | Steps | Time (L40S) | Cost | When | Advance if |
+| Phase | Steps | Time (reference single-GPU) | Cost | When | Advance if |
 |-------|------:|-------------|------|------|------------|
 | Explore | 500 | ~28 min | ~$3 | Always first for new ideas | >0.01 BPB vs baseline |
 | Validate-light | 2000 | ~1.8 hr | ~$8 | Quick confirmation of explore win | >0.005 BPB, 2 seeds agree |
