@@ -60,6 +60,7 @@ case "$MODE" in
             train_gpt.py \
             requirements.txt \
             infra/*.sh \
+            infra/*.py \
             utils/ \
             2>/dev/null \
         | sshpass -e ssh $SSH_OPTS -p "$PORT" root@"$HOST" \
