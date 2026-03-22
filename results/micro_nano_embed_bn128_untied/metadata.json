@@ -1,0 +1,32 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "2415",
+    "MLP_MULT": "2",
+    "MODEL_DIM": "128",
+    "NUM_HEADS": "4",
+    "NUM_KV_HEADS": "2",
+    "NUM_LAYERS": "3",
+    "RUN_ID": "micro_nano_embed_bn128_untied",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50",
+    "WARMDOWN_ITERS": "44"
+  },
+  "generated_at_utc": "2026-03-22T10:23:34+00:00",
+  "git": {
+    "commit": "45335f64ebf31b4e00f3e2b97db16d56158d1d6e",
+    "commit_short": "45335f6",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "575.57.08",
+      "memory_total": "24576 MiB",
+      "name": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "log_path": "logs/micro_nano_embed_bn128_untied.txt",
+  "run_id": "micro_nano_embed_bn128_untied"
+}

@@ -32,10 +32,11 @@ fi
 # Add 15% buffer for validation + overhead
 WALLCLOCK=$(python3 -c "import math; print(math.ceil($MAX_STEPS * $GPU_TIMING_PER_STEP * 1.15))")
 
-# Standardized settings for reproducible comparisons
+# Standardized settings for reproducible comparisons.
+# Allow queue entries to pre-set a shorter wallclock or iteration budget for fast probes.
 export RUN_ID="${NAME}"
-export ITERATIONS="${MAX_STEPS}"
-export MAX_WALLCLOCK_SECONDS="${WALLCLOCK}"
+export ITERATIONS="${ITERATIONS:-$MAX_STEPS}"
+export MAX_WALLCLOCK_SECONDS="${MAX_WALLCLOCK_SECONDS:-$WALLCLOCK}"
 export VAL_LOSS_EVERY="${VAL_LOSS_EVERY:-50}"
 export TRAIN_LOG_EVERY="${TRAIN_LOG_EVERY:-10}"
 export SEED="${SEED:-1337}"
