@@ -10,6 +10,7 @@ Runnable experiment definitions live in [`../experiments/specs/`](../experiments
 |----|-------|--------|------------|
 | F001 | [Activation Design Rules](findings/F001_activation_design_rules.md) | DRAFT | H001, H002, H003 |
 | F002 | [Architecture Sweep at 16MB Scale](findings/F002_architecture_sweep.md) | DRAFT | H004 |
+| F003 | [Micro-Lane Calibration for Architecture Screening](findings/F003_micro_lane_calibration.md) | DRAFT | H005 |
 
 ## Hypotheses
 
@@ -19,6 +20,7 @@ Runnable experiment definitions live in [`../experiments/specs/`](../experiments
 | H002 | [Gradient scaling with magnitude is critical](hypotheses/H002_gradient_scaling.md) | CONFIRMED | Activation exploration |
 | H003 | [Negative leakage improves squared activations](hypotheses/H003_negative_leakage.md) | CONFIRMED | Activation exploration |
 | H004 | [Untied factored embeddings beat tied at 16MB](hypotheses/H004_untied_embeddings.md) | CONFIRMED | Architecture exploration |
+| H005 | [Micro-LLM architecture screens preserve large-margin signs and promotion signal](hypotheses/H005_micro_surrogate_architecture.md) | PROPOSED | Micro-explore calibration |
 
 ## Explorations (Recent)
 
@@ -29,7 +31,9 @@ Runnable experiment definitions live in [`../experiments/specs/`](../experiments
 ## How It Works
 
 ```
-Curiosity → Exploration (500 steps, free-form)
+Curiosity → Micro-Explore (500 steps, nano + micro ladder)
+                ↓  "What survives cheap screening?"
+         Exploration (500 steps, full-width shortlist)
                 ↓  "I see a pattern..."
          Hypothesis (formal claim + pre-registered test plan)
                 ↓  "Run the test"

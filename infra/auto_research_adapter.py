@@ -54,6 +54,18 @@ def classify_stage(steps: int) -> str:
     return "full"
 
 
+def infer_lane(name: str, *, payload: dict | None = None, result_dir: Path | None = None) -> str | None:
+    if isinstance(payload, dict):
+        lane = payload.get("lane")
+        if isinstance(lane, str) and lane.strip():
+            return lane.strip()
+    if name.startswith("micro_nano_") or name.startswith("micro_micro_"):
+        return "micro_explore"
+    if result_dir is not None and result_dir.parent.name == "micro_explore":
+        return "micro_explore"
+    return None
+
+
 def read_progress_from_log(name: str) -> tuple[int | None, float | None]:
     log_path = Path(f"/tmp/{name}.log")
     if not log_path.exists():
@@ -127,6 +139,7 @@ def running_runs() -> list[dict]:
             "name": name,
             "status": "running",
             "stage": classify_stage(steps or max(current_step or 0, 1)),
+            "lane": infer_lane(name),
             "steps": steps,
             "current_step": current_step or 0,
             "val_bpb": val_bpb,
@@ -171,6 +184,7 @@ def queued_runs() -> list[dict]:
             "name": name,
             "status": "queued",
             "stage": classify_stage(steps),
+            "lane": infer_lane(name),
             "steps": steps,
             "current_step": 0,
             "val_bpb": None,
@@ -204,6 +218,7 @@ def completed_runs() -> list[dict]:
             "name": name,
             "status": "completed",
             "stage": stage,
+            "lane": infer_lane(name, result_dir=summary_path.parent),
             "steps": steps,
             "current_step": int(last_eval.get("step") or steps),
             "val_bpb": final_quant.get("val_bpb") or last_eval.get("val_bpb"),
@@ -302,8 +317,14 @@ def list_specs() -> list[dict]:
             "spec_type": payload.get("spec_type", "exploration"),
             "template": payload.get("template", "repo"),
             "stage": payload.get("stage", classify_stage(int(payload.get("steps", 0) or 0))),
+            "lane": infer_lane(slug, payload=payload),
+            "runner_profile": payload.get("runner_profile"),
+            "baseline_spec_id": payload.get("baseline_spec_id"),
             "steps": int(payload.get("steps", 0) or 0),
             "config_overrides": payload.get("config_overrides", {}),
+            "promotion_policy": payload.get("promotion_policy"),
+            "promotion_max": payload.get("promotion_max"),
+            "promotion_margin_bpb": payload.get("promotion_margin_bpb"),
             "linked_docs": payload.get("linked_docs", []),
             "tags": payload.get("tags", []),
             "notes": payload.get("notes", ""),
@@ -332,8 +353,14 @@ def get_spec(slug: str) -> dict:
         "spec_type": payload.get("spec_type", "exploration"),
         "template": payload.get("template", "repo"),
         "stage": payload.get("stage", classify_stage(int(payload.get("steps", 0) or 0))),
+        "lane": infer_lane(slug, payload=payload),
+        "runner_profile": payload.get("runner_profile"),
+        "baseline_spec_id": payload.get("baseline_spec_id"),
         "steps": int(payload.get("steps", 0) or 0),
         "config_overrides": payload.get("config_overrides", {}),
+        "promotion_policy": payload.get("promotion_policy"),
+        "promotion_max": payload.get("promotion_max"),
+        "promotion_margin_bpb": payload.get("promotion_margin_bpb"),
         "linked_docs": payload.get("linked_docs", []),
         "tags": payload.get("tags", []),
         "notes": payload.get("notes", ""),

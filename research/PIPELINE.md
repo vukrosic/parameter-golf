@@ -1,13 +1,13 @@
 # Parameter Golf Research Pipeline
 
 **Date:** 2026-03-22
-**Purpose:** A tight, non-indefinite research loop with clear decision gates, debate triggers, scaling strategy, and X post cadence at every milestone.
+**Purpose:** A tight, non-indefinite research loop with clear decision gates, a reduced-model pre-screen lane, scaling strategy, and X post cadence at every milestone.
 
 ---
 
 ## The Loop
 
-Every research cycle follows four phases. Each phase ends with a **gate** — a decision point that determines what happens next.
+Every research cycle follows five phases. Each phase ends with a **gate** — a decision point that determines what happens next.
 
 ```
 PHASE 1: PLAN ──────────────────────────────────────────────
@@ -15,22 +15,29 @@ PHASE 1: PLAN ──────────────────────
   Action:   Debate (direction / scale / pivot) → wave plan
   Gate:     Human approves plan
             │
-PHASE 2: EXPLORE (500 steps) ──────────────────────────────
+PHASE 2: MICRO-EXPLORE (500 steps) ────────────────────────
   Trigger:  Approved plan deployed
-  Action:   4-8 experiments, 500 steps each (~30 min)
+  Action:   16 reduced-model runs, 500 steps each across nano + micro rungs
+  Gate:     Collect → Compare → promote shortlist
+  Decision: Top-K plus margin winners advance to Phase 3
+            Micro lane fails calibration → fall back to normal explore only
+            │
+PHASE 3: EXPLORE (500 steps) ──────────────────────────────
+  Trigger:  Micro winners identified, OR micro lane skipped
+  Action:   4-8 full-width experiments, 500 steps each (~30 min)
   Gate:     Collect → Compare → X post (stage 1)
-  Decision: Winners (>0.01 BPB gain) advance to Phase 3
+  Decision: Winners (>0.01 BPB gain) advance to Phase 4
             No winners → back to Phase 1 (pivot debate)
             │
-PHASE 3: VALIDATE (2000-4000 steps) ───────────────────────
+PHASE 4: VALIDATE (2000-4000 steps) ───────────────────────
   Trigger:  Explore winners identified
   Action:   1-3 winners x 2 seeds, 2000 or 4000 steps
   Gate:     Collect → Compare → X post (stage 2)
-  Decision: Winner holds across seeds → Phase 4
+  Decision: Winner holds across seeds → Phase 5
             Winner doesn't replicate → back to Phase 1
             Marginal → one more validate round, then decide
             │
-PHASE 4: FULL (13780 steps) ───────────────────────────────
+PHASE 5: FULL (13780 steps) ───────────────────────────────
   Trigger:  Validate winner clear, budget permits
   Action:   1 config x 2 seeds, 13780 steps (~13 hrs)
   Gate:     Collect → X post (stage 3)
@@ -44,10 +51,23 @@ PHASE 4: FULL (13780 steps) ─────────────────�
 
 | Phase | Steps | Time (reference single-GPU) | Cost | When | Advance if |
 |-------|------:|-------------|------|------|------------|
+| Micro-explore | 500 | ~5-15 min | ~$1-2 | Architecture-only pre-screening | Promotion rules pass |
 | Explore | 500 | ~28 min | ~$3 | Always first for new ideas | >0.01 BPB vs baseline |
 | Validate-light | 2000 | ~1.8 hr | ~$8 | Quick confirmation of explore win | >0.005 BPB, 2 seeds agree |
 | Validate-full | 4000 | ~3.7 hr | ~$15 | Strong explore signal or close call | >0.005 BPB, 2 seeds agree |
 | Full | 13780 | ~12.7 hr | ~$50 | Only clear validated winners | Beats 1.2244 BPB |
+
+**Micro-explore defaults:**
+- `nano`: 3L/128d/4h/2kv, 500 steps, `MAX_WALLCLOCK_SECONDS=1200`
+- `micro`: 5L/192d/4h/2kv, 500 steps, `MAX_WALLCLOCK_SECONDS=1800`
+- Fixed across both rungs: tokenizer, dataset, batch tokens, sequence length, activation, and seed
+- Scope: architecture-only experiments; no optimizer, LR, or schedule sweeps in this lane
+
+**Micro promotion rules:**
+- Hard fail if `nano_delta >= +0.015` and `micro_delta >= +0.010`
+- Hard pass if `micro_delta <= -0.010`
+- Rank remaining ideas by `score = micro_delta + 0.5 * nano_delta`
+- Promote at most 4 ideas into full-width explore
 
 **When to use 2000 vs 4000 for validation:**
 - 2000: Explore winner was strong (>0.015 BPB), just confirming it's real
@@ -84,6 +104,7 @@ Debates replace free-form planning. Each type uses specific agents and has a spe
 | Event | Debate Type |
 |-------|-------------|
 | Starting a new wave (no active winners) | Direction |
+| Micro-explore shortlist ready | Scale |
 | Explore → Validate transition | Scale |
 | Validate winner identified, deciding full run | Scale |
 | 3+ consecutive waves with no improvement | Pivot |
@@ -120,6 +141,7 @@ Every phase gate produces a post. No exceptions.
 
 | After | Post Content | Images |
 |-------|-------------|--------|
+| Micro-explore complete | "Screened N architecture ideas on nano + micro rungs, what got promoted" | Delta chart by rung |
 | Explore complete | "Tested N ideas at 500 steps, top results, what we're dropping, what advances" | Bar chart: BPB by experiment |
 | Validate complete | "Confirmed winner X at Y BPB across 2 seeds, advancing/killing" | Loss curves overlaid |
 | Full complete | "New best: X BPB (rank #N)" | Full training curve + leaderboard comparison |
@@ -144,7 +166,7 @@ One unified skill replaces all `/research mode=X` commands:
 ### Typical session flow
 
 ```bash
-/wave                    # "Wave 29 explore complete. 2 winners found."
+/wave                    # "Wave 29 micro-explore complete. 4 ideas promoted."
 /wave plan               # Runs Scale debate → generates wave_30_plan.md
                          # Review plan...
 /wave approve            # Writes queue, activates it
@@ -166,11 +188,12 @@ One unified skill replaces all `/research mode=X` commands:
 These apply at every phase:
 
 1. **Size violation** (>16 MB): Redesign or drop immediately
-2. **Explore no-win** (<0.005 BPB vs baseline at 500 steps): Drop direction
-3. **Seed divergence** (>0.005 BPB between seeds): Result is noise, drop
-4. **Validate plateau** (improvement shrinks from explore): Won't scale, drop
-5. **Full run miss** (doesn't beat 1.2244 BPB): Archive, pivot
-6. **Budget exceeded**: Submit best result, stop
+2. **Micro control failure** (known positives/negatives do not separate): Abort micro lane
+3. **Explore no-win** (<0.005 BPB vs baseline at 500 steps): Drop direction
+4. **Seed divergence** (>0.005 BPB between seeds): Result is noise, drop
+5. **Validate plateau** (improvement shrinks from explore): Won't scale, drop
+6. **Full run miss** (doesn't beat 1.2244 BPB): Archive, pivot
+7. **Budget exceeded**: Submit best result, stop
 
 ---
 
@@ -194,6 +217,7 @@ Given ~$40 total:
 
 | Phase | Format | Example |
 |-------|--------|---------|
+| Micro-explore | `micro_<rung>_<idea>` | `micro_nano_moe_2e` |
 | Explore | `explore/<idea>_<variant>` | `explore/qat_pct70` |
 | Validate | `validate/<idea>_<variant>_s<seed>_<steps>` | `validate/moe4e_bn128u_s1337_4k` |
 | Full | `full/<idea>_<variant>_s<seed>` | `full/moe4e_bn128u_s1337` |
