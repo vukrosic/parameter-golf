@@ -1,0 +1,33 @@
+{
+  "config": {
+    "ITERATIONS": "100",
+    "MAX_WALLCLOCK_SECONDS": "483",
+    "MLP_MULT": "1",
+    "MODEL_DIM": "256",
+    "NUM_HEADS": "4",
+    "NUM_KV_HEADS": "2",
+    "NUM_LAYERS": "4",
+    "RUN_ID": "local_warmup50_nowd_100",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50",
+    "WARMDOWN_ITERS": "0",
+    "WARMUP_STEPS": "50"
+  },
+  "generated_at_utc": "2026-03-22T09:35:10+00:00",
+  "git": {
+    "commit": "6293142febe0fdc09751cc11764b3d3723091f90",
+    "commit_short": "6293142",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "575.57.08",
+      "memory_total": "24576 MiB",
+      "name": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "log_path": "logs/local_warmup50_nowd_100.txt",
+  "run_id": "local_warmup50_nowd_100"
+}
