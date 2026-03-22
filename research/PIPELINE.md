@@ -1,392 +1,244 @@
 # Parameter Golf Research Pipeline
 
 **Date:** 2026-03-22
-**Purpose:** Define a structured, non-indefinite research workflow with clear stage gates, debate triggers, X post cadence, and scaling strategy.
+**Purpose:** A tight, non-indefinite research loop with clear decision gates, debate triggers, scaling strategy, and X post cadence at every milestone.
 
 ---
 
-## Core Problem
+## The Loop
 
-Experiments run in waves indefinitely. There's no stopping condition, no systematic way to decide "this direction is done," and no cadence for external communication. This plan fixes that.
+Every research cycle follows four phases. Each phase ends with a **gate** — a decision point that determines what happens next.
 
----
-
-## Research Modes
-
-### Mode A: Explore (Broad → Narrow)
-Use when starting a new idea category or when stuck on a plateau.
-- **Goal:** Screen 4-8 ideas fast, kill losers, find 1-2 worth deepening.
-- **Trigger:** New idea from KNOWLEDGE.md, failed direction, or plateau.
-- **Process:** See Stage 1 below.
-
-### Mode B: Deepen (Single Direction)
-Use when one idea has survived Explore with clear evidence.
-- **Goal:** Extract maximum BPB from one winning direction.
-- **Trigger:** An Explore winner with ≥0.01 BPB improvement at 500 steps.
-- **Process:** See Stage 2 → Stage 3 → Decision.
-
----
-
-## The Three Stages
-
-### Stage 1 — Quick Screen (500 steps, ~25 min)
-
-**Purpose:** Kill bad ideas cheaply. Find the 1-2 most promising configs.
-
-**How many:** 4-8 experiments per idea category. Run concurrently.
-
-**Queue naming:** `explore/<idea>_<variant>_<n>` e.g. `explore/qat_pct70_500`
-
-**Advancement criteria:**
-- Must beat baseline (1.4793 at 500 steps) by ≥0.005 BPB
-- Must fit under 16 MB
-- Must be reproducible (run at least 2 seeds at 500 steps if result is close to threshold)
-
-**Kill criteria:**
-- No improvement at 500 steps → drop direction entirely
-- Improvement < 0.005 → too small, drop unless zero-cost trick
-- Size violation → redesign (smaller dim, fewer layers) or drop
-
-**X Post after Stage 1:**
 ```
-🚨 Parameter Golf Experiment Results
-
-Quick screen (500 steps, n=4-8 ideas)
-
-🎯 Best: <name> — <val_bpb> (Δ<delta> BPB vs baseline)
-
-💀 Dropped: <list of failed ideas>
-
-📊 Next: <winning idea> → 2000-step validation
-
-#ParameterGolf #ML
+PHASE 1: PLAN ──────────────────────────────────────────────
+  Trigger:  Wave complete, OR no active experiments
+  Action:   Debate (direction / scale / pivot) → wave plan
+  Gate:     Human approves plan
+            │
+PHASE 2: EXPLORE (500 steps) ──────────────────────────────
+  Trigger:  Approved plan deployed
+  Action:   4-8 experiments, 500 steps each (~30 min)
+  Gate:     Collect → Compare → X post (stage 1)
+  Decision: Winners (>0.01 BPB gain) advance to Phase 3
+            No winners → back to Phase 1 (pivot debate)
+            │
+PHASE 3: VALIDATE (2000-4000 steps) ───────────────────────
+  Trigger:  Explore winners identified
+  Action:   1-3 winners x 2 seeds, 2000 or 4000 steps
+  Gate:     Collect → Compare → X post (stage 2)
+  Decision: Winner holds across seeds → Phase 4
+            Winner doesn't replicate → back to Phase 1
+            Marginal → one more validate round, then decide
+            │
+PHASE 4: FULL (13780 steps) ───────────────────────────────
+  Trigger:  Validate winner clear, budget permits
+  Action:   1 config x 2 seeds, 13780 steps (~13 hrs)
+  Gate:     Collect → X post (stage 3)
+  Decision: Beats 1.2244 → submit to leaderboard
+            Doesn't beat → back to Phase 1
 ```
 
 ---
 
-### Stage 2 — Validate (2000-5000 steps, ~2-4 hr)
+## Step Counts & When to Use
 
-**Purpose:** Confirm that Stage 1 winners are real and not noise.
+| Phase | Steps | Time (L40S) | Cost | When | Advance if |
+|-------|------:|-------------|------|------|------------|
+| Explore | 500 | ~28 min | ~$3 | Always first for new ideas | >0.01 BPB vs baseline |
+| Validate-light | 2000 | ~1.8 hr | ~$8 | Quick confirmation of explore win | >0.005 BPB, 2 seeds agree |
+| Validate-full | 4000 | ~3.7 hr | ~$15 | Strong explore signal or close call | >0.005 BPB, 2 seeds agree |
+| Full | 13780 | ~12.7 hr | ~$50 | Only clear validated winners | Beats 1.2244 BPB |
 
-**How many:** 1-3 winning ideas × 2 seeds each.
+**When to use 2000 vs 4000 for validation:**
+- 2000: Explore winner was strong (>0.015 BPB), just confirming it's real
+- 4000: Explore winner was moderate (0.005-0.015 BPB), need to see if it persists
 
-**Queue naming:** `validate/<idea>_<variant>_s<seed>_<steps>` e.g. `validate/moe4e_bn128u_s1337_4k`
-
-**Steps logic:**
-- 2000 steps for quick confirmation
-- 4000 steps for final validation (preferred)
-- 5000 steps only if learning curve is still improving sharply
-
-**Advancement criteria:**
-- Must beat baseline (1.4793 at 500 steps scales differently — compare against known curves)
-- For MoE4e d384: must beat 1.3637 (current best at 4000 steps)
-- Improvement must survive 2+ seeds (Δ < 0.005 between seeds = robust)
-- Must fit under 16 MB
-
-**Kill criteria:**
-- Result doesn't replicate across seeds → noise, drop
-- Improvement shrinks at longer steps (plateauing early) → likely won't win at full run
-- Improvement vanishes at 4000 steps when it was visible at 500 → investigate or drop
-
-**X Post after Stage 2:**
-```
-📈 Parameter Golf — Validation Results
-
-<idea> at <steps> steps (n=2 seeds)
-
-Seed 1337: <val_bpb>
-Seed 42:   <val_bpb>
-Mean:      <val_bpb>
-
-vs best known: <compare> (Δ<delta> BPB)
-vs baseline:  <compare> (Δ<delta> BPB)
-
-✅ Promising — scaling to full run
-❌ Dead end — <reason>
-
-#ParameterGolf #ML
-```
-
-**Include:** learning curve plot (train loss + val bpb over steps).
+**Maximum depth per direction:** 2 validate rounds + 1 full run. If it hasn't won by then, archive and pivot.
 
 ---
 
-### Stage 3 — Full Run (13,780 steps, ~12 hr)
+## The Three Debate Types
 
-**Purpose:** Pre-submission run to confirm the result holds at competition-scale training.
+Debates replace free-form planning. Each type uses specific agents and has a specific trigger.
 
-**How many:** 1 config × 2 seeds (only after Stage 2 winner is clear).
+### Direction Debate
+**When:** Start of new wave, no active winners, exploring new territory.
+**Agents:** Architect + Explorer + Skeptic
+**Focus:** What new ideas to try. Cast a wide net.
+**Output:** 4-8 explore experiments across 1-2 idea categories.
 
-**Queue naming:** `full/<idea>_<variant>_s<seed>` e.g. `full/moe4e_bn128u_s1337`
+### Scale Debate
+**When:** Explore winners found, deciding how to validate/scale.
+**Agents:** Architect + Challenger + Optimizer
+**Focus:** Will this hold at full training? What's the scaling plan?
+**Output:** Validate queue (2-4 experiments, 2 seeds each).
 
-**Advancement criteria:**
-- Must beat 1.2244 BPB (current leaderboard baseline) — this is the hard bar
-- If within 0.01 BPB of leaderboard baseline, still worth submitting
+### Pivot Debate
+**When:** 3+ waves without improvement, budget <$10, or strategic crossroads.
+**Agents:** All 5 (Architect + Skeptic + Explorer + Challenger + Optimizer)
+**Focus:** Are we saturated? What's the highest-EV path forward?
+**Output:** Strategic reassessment, possibly new direction entirely.
 
-**Kill criteria:**
-- Full run result is worse than Stage 2 trajectory predicted → investigate (likely undertrained or overfitting)
-- Budget exhausted → submit best result regardless
+### Debate Triggers (mandatory)
 
-**X Post after Stage 3:**
+| Event | Debate Type |
+|-------|-------------|
+| Starting a new wave (no active winners) | Direction |
+| Explore → Validate transition | Scale |
+| Validate winner identified, deciding full run | Scale |
+| 3+ consecutive waves with no improvement | Pivot |
+| Budget below $10 remaining | Pivot |
+| After a failed full run | Pivot |
+
+---
+
+## Explore vs. Deepen Decision Logic
+
 ```
-🏁 Parameter Golf — Full Run Complete
+gap = current_best - leaderboard_target
 
-Config: <model description>
-Steps: 13,780 | Wall: ~12hr
+IF gap > 0.05 BPB:
+    → EXPLORE: need breakthrough, cast wide net
+    → Debate type: Direction
 
-Pre-quant:  <bpb>
-Post-quant: <bpb>
+IF gap <= 0.05 BPB:
+    → DEEPEN: squeeze winning config
+    → Debate type: Scale
 
-Leaderboard baseline: 1.2244
-Our result:           <bpb> (Δ<delta>)
+IF budget < $10:
+    → Debate type: Pivot (reassess everything)
 
-Status: <submitted / pending / needs more work>
-
-#ParameterGolf #ML
+IF 3+ waves with no improvement:
+    → Debate type: Pivot
 ```
 
 ---
 
-## The Scaling / Pivot Decision
+## X Post Cadence
 
-After Stage 2, you have three choices:
+Every phase gate produces a post. No exceptions.
 
-```
-IF stage2_result > baseline_by_0.02+ BPB:
-    → Scale to full run (Stage 3)
-    → Also try stacking with known-good techniques (e.g., bn128_untied + MoE4e)
-ELIF stage2_result > baseline_by_0.005 BPB:
-    → Try one more Stage 2 variant (hyperparameter sweep)
-    → If still promising → Stage 3
-ELSE:
-    → Pivot. Archive this direction in KNOWLEDGE.md as "falsified" or "insufficient"
-    → Return to Stage 1 with a new idea
-```
+| After | Post Content | Images |
+|-------|-------------|--------|
+| Explore complete | "Tested N ideas at 500 steps, top results, what we're dropping, what advances" | Bar chart: BPB by experiment |
+| Validate complete | "Confirmed winner X at Y BPB across 2 seeds, advancing/killing" | Loss curves overlaid |
+| Full complete | "New best: X BPB (rank #N)" | Full training curve + leaderboard comparison |
+| Pivot debate | "Changing direction: from X to Y, here's why" | Optional |
 
-**Maximum depth per direction:** 2 Stage 2 rounds + 1 Stage 3. If it hasn't won by then, archive and pivot.
+**Rule:** Posts happen at gates, not spontaneously. The gate analysis is the post source material.
 
 ---
 
-## Debate Agents — When and What
+## The /wave Skill
 
-### The Three Agents
-
-**Architect** — Focuses on parameter budget, size constraints, and architectural coherence.
-- Asks: "Does this fit under 16MB?" "Are we losing too much capacity to X?"
-- Defends: Why the current best config is near-optimal.
-
-**Challenger** — Focuses on what could go wrong at full scale, what might not replicate, and what alternative approaches dominate.
-- Asks: "Will this hold at 13k steps?" "Is MoE actually helping or just adding params?" "What if we tried X instead?"
-- Pushes: For hard cutoffs and kill criteria.
-
-**Explorer** — Focuses on unexplored directions and wild ideas.
-- Asks: "What haven't we tested?" "Is there a orthogonal improvement?"
-- Suggests: New experiments to run in parallel.
-
-### When to Trigger Debate
-
-| Event | Trigger? |
-|---|---|
-| Before starting a new Wave (creating a new queue) | **Always** |
-| Stage 1 → Stage 2 transition | **Always** |
-| Stage 2 winner identified | **Always** |
-| Plateau for 3+ consecutive waves | **Always** |
-| Budget below $10 remaining | **Always** |
-| Ad-hoc / anytime you feel stuck | Optional |
-
-### What They Debate
-
-The debate output is a **Wave Plan** document written to `queues/wave_NN_plan.md`:
+One unified skill replaces all `/research mode=X` commands:
 
 ```
-# Wave NN — <Topic>
-
-## Decision: <What we're deciding>
-
-## Architect's Position
-[150 words max]
-
-## Challenger's Position
-[150 words max]
-
-## Explorer's Position
-[150 words max]
-
-## Consensus
-[One paragraph: what we're doing and why]
-
-## Experiments
-<list of queue entries>
-
-## Kill Criteria
-<specific conditions that stop this wave early>
-
-## Stage Gate
-<what Stage 2 looks like if winners emerge>
+/wave              → Show wave status + auto-suggest next action
+/wave plan         → Run debate → generate wave plan → show for approval
+/wave approve      → Lock plan, write queue to active.txt, ready to deploy
+/wave results      → Collect + compare + draft X post
+/wave pivot        → Force pivot debate regardless of state
 ```
 
-### Debate Execution
+### Typical session flow
 
-Use Claude Code with three parallel agents, each given a persona prompt + full context (KNOWLEDGE.md, current results, budget status). The Architect, Challenger, and Explorer each produce their section, then a Synthesizer agent (or the human) writes the consensus.
+```bash
+/wave                    # "Wave 29 explore complete. 2 winners found."
+/wave plan               # Runs Scale debate → generates wave_30_plan.md
+                         # Review plan...
+/wave approve            # Writes queue, activates it
+/deploy queues/active.txt  # Send to GPUs
+# ... wait for training ...
+/wave results            # Collect, compare, draft X post
+                         # "Winner: X at Y BPB. Advancing to full."
+/wave plan               # Runs Scale debate for full run
+/wave approve
+/deploy queues/active.txt
+# ... wait ...
+/wave results            # Final result + X post
+```
 
 ---
 
-## Research vs Deepen: Decision Tree
+## Kill Criteria (Universal)
 
-```
-Start of session:
-├── What's the current active wave status?
-│   ├── If running → check progress, don't start new debate
-│   └── If complete → go to Decision Point
-│
-Decision Point:
-├── Did last wave produce a clear winner?
-│   ├── YES → Is improvement ≥ 0.01 BPB?
-│   │         ├── YES → Mode B: Deepen (Stage 2/3 path)
-│   │         └── NO  → Mode B but with more variants (Stage 2 first)
-│   └── NO (mixed or negative) → Mode A: Explore new direction
-│
-Stuck Check:
-├── Have we done 3 consecutive waves with no improvement?
-│   ├── YES → Emergency debate: is the current approach saturated?
-│   │         ├── YES → Pivot to new idea category
-│   │         └── NO  → One more focused attempt
-│   └── NO → Continue current mode
-```
+These apply at every phase:
+
+1. **Size violation** (>16 MB): Redesign or drop immediately
+2. **Explore no-win** (<0.005 BPB vs baseline at 500 steps): Drop direction
+3. **Seed divergence** (>0.005 BPB between seeds): Result is noise, drop
+4. **Validate plateau** (improvement shrinks from explore): Won't scale, drop
+5. **Full run miss** (doesn't beat 1.2244 BPB): Archive, pivot
+6. **Budget exceeded**: Submit best result, stop
+
+---
+
+## Budget Allocation
+
+Given ~$40 total:
+
+| Allocation | Budget | Notes |
+|-----------|--------|-------|
+| Explore waves (total) | ~$12 | 4 waves x $3 each |
+| Validate rounds (total) | ~$16 | 2 directions x $8 each |
+| Full run | ~$12 | 1 config x 2 seeds |
+| **Total** | **~$40** | |
+
+**Rule:** Never spend >50% of remaining budget on a single full run.
+**Rule:** Always check `/cost` before any validate or full deployment.
 
 ---
 
 ## Queue Naming Convention
 
-| Stage | Format | Example |
-|---|---|---|
+| Phase | Format | Example |
+|-------|--------|---------|
 | Explore | `explore/<idea>_<variant>` | `explore/qat_pct70` |
 | Validate | `validate/<idea>_<variant>_s<seed>_<steps>` | `validate/moe4e_bn128u_s1337_4k` |
 | Full | `full/<idea>_<variant>_s<seed>` | `full/moe4e_bn128u_s1337` |
 
-Archive all completed queues to `queues/archive/wave_NN/<original_file>`.
-
 ---
 
-## Budget Allocation Per Stage
+## Wave Plan Format
 
-Given ~$40 total budget:
+Every wave produces `queues/wave_NN_plan.md`:
 
-| Stage | Max Cost | Rationale |
-|---|---|---|
-| Explore (per idea) | $3 | 4-8 × 500-step runs on 1 GPU |
-| Validate (per winner) | $8 | 2 seeds × 4000 steps |
-| Full run | $15 | 2 seeds × 13,780 steps |
-| **Total if 1 idea → full** | **~$26** | Leaves buffer |
-| **Exploration buffer** | **~$14** | Can try 4-5 ideas before committing |
+```markdown
+# Wave NN — <Topic>
 
-**Rule:** Never spend >50% of remaining budget on a single Stage 3 run.
+**Created:** YYYY-MM-DD
+**Debate type:** Direction | Scale | Pivot
+**Status:** PENDING | APPROVED
 
----
+## Decision
+What we're testing and why.
 
-## X/Twitter Post Cadence
+## Debate Summary
+Key positions, agreements, disagreements.
 
-| Milestone | Post? | Content |
-|---|---|---|
-| Stage 1 complete | **Yes** | Quick screen summary, drop list, next step |
-| Stage 2 complete | **Yes** | Validation results, learning curves, advance/drop decision |
-| Stage 3 complete | **Yes** | Final result, leaderboard comparison |
-| Plateau reached | **Optional** | What we're stuck on, asking for ideas |
-| Budget milestone | **Optional** | e.g., "75% of budget used, 3 directions screened" |
+## Experiments
+<queue entries>
 
-**Posting rule:** Posts happen after debate consensus, not spontaneously. The debate output is the post source material.
+## Kill Criteria
+Specific conditions that stop this wave early.
 
----
+## Advancement Gate
+What the next phase looks like if winners emerge.
 
-## Skills and Workflow Structure
-
-### New Skill: `/research`
-
-A skill that runs the decision tree above and produces a Wave Plan.
-
-```
-/research                    → Full decision + debate trigger
-/research mode=explore       → Start new exploration wave
-/research mode=deepen        → Continue winning direction
-/research mode=debate        → Just run the debate agents
-/research mode=post          → Draft X post from last results
-```
-
-### New Workflow: `queues/` structure
-
-```
-queues/
-  active/               ← Current working queue (symlink or text file)
-  archive/
-    wave_23/
-    wave_24/
-    ...
-  templates/
-    explore.txt        ← Template for explore queue entries
-    validate.txt        ← Template for validate queue entries
-    full.txt            ← Template for full run entries
-  wave_NN_plan.md      ← Created by debate, consumed by deploy
-```
-
-### File Lifecycle
-
-```
-Idea in KNOWLEDGE.md
-    ↓ [debate triggered]
-queues/wave_NN_plan.md created
-    ↓ [queue written]
-queues/active.txt = queues/wave_NN.txt
-    ↓ [experiments run]
-queues/wave_NN.txt → queues/archive/wave_NN/
-    ↓ [results analyzed]
-KNOWLEDGE.md updated
-    ↓ [next debate triggered]
+## Budget Estimate
+Per-experiment and total cost.
 ```
 
 ---
 
-## What Goes in KNOWLEDGE.md
+## Anti-Patterns
 
-After each wave, update KNOWLEDGE.md:
-- New proven facts (with exact BPB deltas)
-- Falsified hypotheses (with evidence)
-- Updated ranking of techniques
-- Open questions (what we still don't know)
-
-Format per entry:
-```
-## [Finding name]
-
-**Evidence:** <experiment names>, <step counts>, <exact numbers>
-**Delta:** ±X.XXXX BPB vs baseline
-**Status:** ✅ proven / ❌ falsified / 🔄 inconclusive
-**Notes:** <anything surprising or caveats>
-```
-
----
-
-## Summary: One-Page Process
-
-```
-DECIDE          → /research → debate → wave_NN_plan.md
-QUEUE           → write queue, archive old active.txt
-RUN             → /deploy queues/active.txt
-COLLECT         → /collect after completion
-ANALYZE         → Stage 1? → compare to 500-step baseline
-                  Stage 2? → compare learning curves, seed stability
-                  Stage 3? → compare to 1.2244 leaderboard
-POST            → X post from debate output
-DECIDE          → advance / pivot / deepen
-REPEAT          → until budget exhausted or baseline beaten
-```
-
----
-
-## Anti-Patterns to Avoid
-
-1. **Running more Explore without debate** — wastes budget on directions already falsified
+1. **Running explore without debate** — wastes budget on directions already falsified
 2. **Skipping seeds** — single-seed results are noise at this scale
-3. **Going to Stage 3 without Stage 2** — full runs cost 10x; confirm first
-4. **No post after Stage 2** — forces clarity on whether direction is dead
-5. **Keeping a dead queue active** — if a wave is done, archive it immediately
-6. **Running more than 2 full directions at once** — budget discipline matters
+3. **Going to full without validate** — full runs cost 10x; confirm first
+4. **No X post after a gate** — forces clarity and external accountability
+5. **Keeping dead queues active** — archive immediately when done
+6. **More than 2 explore directions at once** — focus beats breadth at this budget
+7. **Re-running failed approaches** — check KNOWLEDGE.md every time
+8. **Running indefinitely** — every wave must end with a gate decision
