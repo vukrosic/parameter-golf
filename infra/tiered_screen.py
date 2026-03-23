@@ -92,35 +92,62 @@ FULL = dict(
 )
 
 PROGRESS_FILE = os.path.join("results", ".screen_progress.json")
-_config_times: list[float] = []  # elapsed seconds per completed config
+SLOW_LOG_FILE  = os.path.join("results", ".screen_slow.log")
+_config_times: list[float] = []  # time-per-step (s) for each completed config
+_time_per_step: float = 0.0      # running avg seconds per training step
+_slow_warning: str = ""          # set when a config runs >3× expected
 _progress_start = time.perf_counter()
 
 def _write_progress(stage, config_i, config_total, config_name="", stage_steps=0):
     """Write a progress file so external tools (Discord bot) can show live status."""
     try:
         elapsed = time.perf_counter() - _progress_start
-        # Estimate remaining: avg time per config × remaining configs across all stages
-        avg_per_config = (elapsed / max(config_i - 1 + (stage - 1) * config_total, 1)) if (config_i > 1 or stage > 1) else 0
-        # Total configs across all stages (bot ladder: N + top2+1 + top3+1)
+        tps = _time_per_step  # seconds per step (0 until first config finishes)
+
         s1_total = len(CONFIGS)
-        s2_total = min(TOP2 + 1, s1_total)  # promoted + baseline
-        s3_total = (min(TOP3 + 1, s2_total)) if S3_STEPS else 0  # promoted + baseline
+        s2_total = min(TOP2 + 1, s1_total)
+        s3_total = (min(TOP3 + 1, s2_total)) if S3_STEPS else 0
+
+        # Remaining steps after the currently-running config, per stage
+        if stage == 1:
+            s1_rem = max(0, s1_total - config_i) * S1_STEPS
+            s2_rem = s2_total * S2_STEPS
+            s3_rem = s3_total * S3_STEPS if S3_STEPS else 0
+        elif stage == 2:
+            s1_rem = 0
+            s2_rem = max(0, s2_total - config_i) * S2_STEPS
+            s3_rem = s3_total * S3_STEPS if S3_STEPS else 0
+        else:
+            s1_rem = 0
+            s2_rem = 0
+            s3_rem = max(0, s3_total - config_i) * (S3_STEPS or 0)
+
+        eta_s1 = int(tps * s1_rem) if tps > 0 else 0
+        eta_s2 = int(tps * s2_rem) if tps > 0 else 0
+        eta_s3 = int(tps * s3_rem) if tps > 0 else 0
+        eta_s  = eta_s1 + eta_s2 + eta_s3
+
+        done_all = (
+            config_i - 1 if stage == 1 else
+            s1_total + config_i - 1 if stage == 2 else
+            s1_total + s2_total + config_i - 1
+        )
         total_all = s1_total + s2_total + s3_total
-        # Completed so far
-        done_all = 0
-        if stage == 1: done_all = config_i - 1
-        elif stage == 2: done_all = s1_total + config_i - 1
-        elif stage == 3: done_all = s1_total + s2_total + config_i - 1
-        remaining = max(0, total_all - done_all)
-        eta_s = int(avg_per_config * remaining) if avg_per_config > 0 else 0
 
         os.makedirs("results", exist_ok=True)
         with open(PROGRESS_FILE, "w") as f:
-            json.dump({"stage": stage, "config_i": config_i, "config_total": config_total,
-                        "config_name": config_name, "stage_steps": stage_steps,
-                        "topic": _topic, "ladder": args.ladder,
-                        "elapsed_s": round(elapsed), "eta_s": eta_s,
-                        "done_all": done_all, "total_all": total_all}, f)
+            json.dump({
+                "stage": stage, "config_i": config_i, "config_total": config_total,
+                "config_name": config_name, "stage_steps": stage_steps,
+                "topic": _topic, "ladder": args.ladder,
+                "elapsed_s": round(elapsed), "eta_s": eta_s,
+                "eta_s1": eta_s1, "eta_s2": eta_s2, "eta_s3": eta_s3,
+                "s1_steps": S1_STEPS, "s2_steps": S2_STEPS, "s3_steps": S3_STEPS or 0,
+                "s1_total": s1_total, "s2_total": s2_total, "s3_total": s3_total,
+                "time_per_step_s": round(tps, 4),
+                "done_all": done_all, "total_all": total_all,
+                "slow_warning": _slow_warning,
+            }, f)
     except Exception:
         pass
 
@@ -129,6 +156,33 @@ def _clear_progress():
         os.remove(PROGRESS_FILE)
     except Exception:
         pass
+
+
+def _update_timing(elapsed_s: float, steps: int, name: str):
+    """Update time-per-step estimate. Log and flag slow configs (>3× expected)."""
+    global _time_per_step, _slow_warning, _config_times
+    if steps <= 0:
+        return
+    tps = elapsed_s / steps
+    if _config_times:
+        prev_avg = sum(_config_times) / len(_config_times)
+        if tps > 3.0 * prev_avg:
+            _slow_warning = f"{name}: {elapsed_s:.1f}s (expected ~{prev_avg * steps:.1f}s, {tps / prev_avg:.1f}×)"
+            try:
+                os.makedirs("results", exist_ok=True)
+                with open(SLOW_LOG_FILE, "a") as f:
+                    f.write(json.dumps({
+                        "ts": datetime.datetime.now().isoformat(),
+                        "config": name, "elapsed_s": round(elapsed_s, 2),
+                        "expected_s": round(prev_avg * steps, 2), "steps": steps,
+                        "ratio": round(tps / prev_avg, 2),
+                    }) + "\n")
+            except Exception:
+                pass
+        else:
+            _slow_warning = ""
+    _config_times.append(tps)
+    _time_per_step = sum(_config_times) / len(_config_times)
 
 print("Loading data...", flush=True)
 torch.manual_seed(SEED); torch.cuda.manual_seed_all(SEED)
@@ -168,7 +222,7 @@ def run_config(name, steps, arch_desc, overrides):
                    "train_loss": round(avg_loss, 4), "n_params": n_params,
                    "arch": arch_desc, "overrides": overrides}, f, indent=2)
     print(f"  {name:<32}  loss={avg_loss:.4f}  params={n_params:,}  ({elapsed:.1f}s)", flush=True)
-    return avg_loss
+    return avg_loss, elapsed
 
 # ── STAGE 1 ───────────────────────────────────────────────────────────────
 print("═"*60)
@@ -177,7 +231,9 @@ print("═"*60)
 s1, BASELINE_KEY = {}, CONFIGS[0][0]
 for _ci, (name, desc, ov) in enumerate(CONFIGS):
     _write_progress(1, _ci + 1, len(CONFIGS), name, S1_STEPS)
-    s1[name] = (run_config(f"s1_{_topic}_{name}", S1_STEPS, desc, ov), desc, ov)
+    loss, elapsed = run_config(f"s1_{_topic}_{name}", S1_STEPS, desc, ov)
+    _update_timing(elapsed, S1_STEPS, f"s1_{_topic}_{name}")
+    s1[name] = (loss, desc, ov)
 
 s1_baseline_loss = s1[BASELINE_KEY][0]
 s1_ranked        = sorted(s1.items(), key=lambda x: x[1][0])
@@ -193,7 +249,9 @@ cfg_map = {c[0]: c for c in CONFIGS}
 for _ci, name in enumerate(promote):
     _write_progress(2, _ci + 1, len(promote), name, S2_STEPS)
     _, desc, ov = cfg_map[name]
-    s2[name] = (run_config(f"s2_{_topic}_{name}", S2_STEPS, desc, ov), desc)
+    loss, elapsed = run_config(f"s2_{_topic}_{name}", S2_STEPS, desc, ov)
+    _update_timing(elapsed, S2_STEPS, f"s2_{_topic}_{name}")
+    s2[name] = (loss, desc)
 
 s2_baseline_loss = s2[BASELINE_KEY][0]
 s2_ranked        = sorted(s2.items(), key=lambda x: x[1][0])
@@ -209,7 +267,9 @@ if S3_STEPS:
     for _ci, name in enumerate(s3_promote):
         _write_progress(3, _ci + 1, len(s3_promote), name, S3_STEPS)
         _, desc, ov = cfg_map[name]
-        s3[name] = (run_config(f"s3_{_topic}_{name}", S3_STEPS, desc, ov), desc)
+        loss, elapsed = run_config(f"s3_{_topic}_{name}", S3_STEPS, desc, ov)
+        _update_timing(elapsed, S3_STEPS, f"s3_{_topic}_{name}")
+        s3[name] = (loss, desc)
     s3_baseline_loss = s3[BASELINE_KEY][0]
     s3_ranked        = sorted(s3.items(), key=lambda x: x[1][0])
 
