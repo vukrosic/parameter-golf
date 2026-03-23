@@ -17,9 +17,11 @@ Hard limits enforced:
 """
 
 import argparse
+import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import time
@@ -27,13 +29,13 @@ from pathlib import Path
 from typing import Optional
 
 # ── Timing thresholds ─────────────────────────────────────────────────────────
-# 300 steps × 157ms = 47s training
-# + final val (VAL_BATCH_SIZE=4194304, B=512 seqs, ~15s) + overhead = ~70s
+# Current 3090 reality for this queue is closer to ~90-110s/experiment:
+# ~50-60s training + long final val, with heavier combos clustering near ~100s.
 # INT8 eval is SKIPPED: runner kills process once val_bpb appears in log
-EXPECTED_S       = 70    # expected wall time per experiment (seconds)
-WARN_S           = 95    # yellow warning: running slow
-OVER_S           = 120   # red: clearly overtime
-OUTER_TIMEOUT    = 150   # hard kill fallback if process hangs
+EXPECTED_S       = 100   # expected wall time per experiment (seconds)
+WARN_S           = 120   # yellow warning: running slow
+OVER_S           = 150   # red: clearly overtime
+OUTER_TIMEOUT    = 180   # hard kill fallback if process hangs
 KILL_AFTER_VAL_S = 4     # seconds to wait after val_bpb logged before killing (skip int8)
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
@@ -44,6 +46,10 @@ RED = "\033[31m"; YLW = "\033[33m"; GRN = "\033[32m"; CYN = "\033[36m"; MAG = "\
 def c(code, text): return f"{code}{text}{R}"
 
 REPO = Path(__file__).parent.parent
+LOG_STEP_RE = re.compile(r'^step:(\d+)/(\d+)\s+')
+LOG_STEP_AVG_RE = re.compile(r'^step:(\d+)/(\d+).+step_avg:([\d.]+)ms$')
+LOG_STEP_VAL_RE = re.compile(r'^step:(\d+)/(\d+)\s+val_loss:[\d.]+\s+val_bpb:([\d.]+)')
+LOG_FINAL_VAL_RE = re.compile(r'^final_int8_zlib_roundtrip_exact\s+val_loss:[\d.]+\s+val_bpb:([\d.]+)')
 
 
 # ── Queue parsing ─────────────────────────────────────────────────────────────
@@ -74,6 +80,54 @@ def is_done(name: str) -> bool:
     return (REPO / "results" / name / "train.log").exists()
 
 
+def persist_artifacts(name: str, log_path: str, env: dict) -> None:
+    """Backfill result artifacts even when the runner exits early after val_bpb."""
+    result_dir = REPO / "results" / name
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    src_log = Path(log_path)
+    if not src_log.is_absolute():
+        src_log = REPO / src_log
+
+    if src_log.exists():
+        shutil.copy2(src_log, result_dir / "train.log")
+
+    subprocess.run(
+        [
+            sys.executable,
+            "infra/export_experiment_artifacts.py",
+            "--run-id", name,
+            "--log-path", str(src_log),
+            "--output-dir", str(result_dir),
+        ],
+        env=env,
+        cwd=str(REPO),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def terminate_process_group(proc: subprocess.Popen) -> None:
+    """Terminate the whole experiment process group, not just the shell wrapper."""
+    if proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+
+def kill_process_group(proc: subprocess.Popen) -> None:
+    """Hard-kill the whole experiment process group."""
+    if proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
 # ── Log parsing ───────────────────────────────────────────────────────────────
 
 def _last_match(path: str, pattern: str) -> Optional[re.Match]:
@@ -89,20 +143,44 @@ def _last_match(path: str, pattern: str) -> Optional[re.Match]:
 
 
 def get_val_bpb(log_path: str) -> Optional[float]:
-    m = _last_match(log_path, r'val_bpb:([\d.]+)')
-    return float(m.group(1)) if m else None
+    try:
+        lines = Path(log_path).read_text(errors='replace').splitlines()
+        for line in reversed(lines):
+            m = LOG_STEP_VAL_RE.match(line)
+            if m:
+                return float(m.group(3))
+        for line in reversed(lines):
+            m = LOG_FINAL_VAL_RE.match(line)
+            if m:
+                return float(m.group(1))
+    except FileNotFoundError:
+        pass
+    return None
 
 
 def get_last_step(log_path: str) -> tuple[Optional[int], Optional[int]]:
-    # Use negative lookbehind to skip "warmup_step:" lines (warmup_ precedes step:)
-    m = _last_match(log_path, r'(?<![a-z_])step:(\d+)/(\d+)')
-    return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+    try:
+        lines = Path(log_path).read_text(errors='replace').splitlines()
+        for line in reversed(lines):
+            m = LOG_STEP_RE.match(line)
+            if m:
+                return (int(m.group(1)), int(m.group(2)))
+    except FileNotFoundError:
+        pass
+    return (None, None)
 
 
 def get_step_avg_ms(log_path: str) -> Optional[float]:
     """Latest step_avg from log (ms per training step)."""
-    m = _last_match(log_path, r'step_avg:([\d.]+)ms')
-    return float(m.group(1)) if m else None
+    try:
+        lines = Path(log_path).read_text(errors='replace').splitlines()
+        for line in reversed(lines):
+            m = LOG_STEP_AVG_RE.match(line)
+            if m:
+                return float(m.group(3))
+    except FileNotFoundError:
+        pass
+    return None
 
 
 def detect_failure(log_path: str) -> Optional[str]:
@@ -139,6 +217,12 @@ def run_experiment(
     (REPO / "logs").mkdir(exist_ok=True)
 
     cmd = ["bash", "infra/run_experiment.sh", name, str(steps)]
+    # run_experiment.sh always writes the live log to logs/<run_id>.txt via tee.
+    # Use that canonical path for parsing/progress even in verify mode.
+    log_file = REPO / "logs" / f"{name}.txt"
+    if log_file.exists():
+        log_file.unlink()
+    live_log_path = str(log_file)
 
     # Header
     print(f"\n{c(BOLD, f'[{display_idx:02d}/{total}]')} {c(CYN, name)}")
@@ -158,12 +242,14 @@ def run_experiment(
     timed_out = False
     killed_after_val = False
 
-    with open(log_path, 'w') as log_f:
-        proc = subprocess.Popen(
-            cmd, env=env,
-            stdout=log_f, stderr=subprocess.STDOUT,
-            cwd=str(REPO)
-        )
+    proc = subprocess.Popen(
+        cmd,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+        cwd=str(REPO),
+        start_new_session=True,
+    )
 
     POLL = 3  # seconds between status polls
     warned_overtime = False
@@ -177,23 +263,23 @@ def run_experiment(
             elapsed = time.time() - start
 
             if elapsed >= OUTER_TIMEOUT:
-                proc.kill()
+                kill_process_group(proc)
                 proc.wait()
                 timed_out = True
                 break
 
             # ── Early kill: skip int8 eval ─────────────────────────────────
             # Once training is done AND val_bpb is logged, kill to skip int8.
-            cur_step, tot_step = get_last_step(log_path)
-            training_done = (cur_step is not None and cur_step == tot_step)
-            if training_done and val_done_at is None and get_val_bpb(log_path) is not None:
+            cur_step, tot_step = get_last_step(live_log_path)
+            current_val_bpb = get_val_bpb(live_log_path)
+            if val_done_at is None and current_val_bpb is not None:
                 val_done_at = time.time()
             if val_done_at is not None and (time.time() - val_done_at) >= KILL_AFTER_VAL_S:
-                proc.terminate()
+                terminate_process_group(proc)
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    proc.kill()
+                    kill_process_group(proc)
                     proc.wait()
                 killed_after_val = True
                 break  # cleanly killed after val
@@ -224,14 +310,15 @@ def run_experiment(
             print(f"  ▶ [{bar_color}] {elapsed_color}{step_info}    ", end='\r', flush=True)
 
     elapsed = time.time() - start
-    val_bpb = get_val_bpb(log_path)
-    cur_step, tot_step = get_last_step(log_path)
-    step_avg = get_step_avg_ms(log_path)
+    val_bpb = get_val_bpb(live_log_path)
+    cur_step, tot_step = get_last_step(live_log_path)
+    step_avg = get_step_avg_ms(live_log_path)
     exit_code = proc.returncode
     # Don't flag as failure if we intentionally killed after val_bpb
     if killed_after_val:
         exit_code = 0
-    failure = detect_failure(log_path) if exit_code != 0 else None
+    failure = detect_failure(live_log_path) if exit_code != 0 else None
+    persist_artifacts(name, live_log_path, env)
 
     # Final result line
     print(" " * 70, end='\r')  # clear progress line
@@ -310,6 +397,56 @@ def print_top_n(results: list[dict], n=10):
         steps_str = f"  ({r['step_done']}/{r['step_total']} steps)" if r['step_done'] else ""
         bpb_s = f"{r['val_bpb']:.4f}"
         print(f"  {i:2d}. {c(GRN, bpb_s)}  {r['name']:<30}{steps_str}")
+
+
+def print_queue_progress(results: list[dict], completed: int, total: int, elapsed_s: float):
+    if not results:
+        return
+    avg_s = sum(r["elapsed"] for r in results) / len(results)
+    remaining = max(total - completed, 0)
+    eta_s = remaining * avg_s
+    ok = [r for r in results if r["val_bpb"] is not None]
+    best = min(ok, key=lambda r: r["val_bpb"]) if ok else None
+    best_str = f"{best['name']} {best['val_bpb']:.4f}" if best else "N/A"
+    print(
+        f"  Queue progress: {completed}/{total} done | "
+        f"avg {avg_s:.0f}s/exp | elapsed {elapsed_s/60:.1f}min | "
+        f"ETA ~{eta_s/60:.0f}min | best {best_str}"
+    )
+
+
+def write_progress_snapshot(
+    queue_file: str,
+    total: int,
+    skipped: int,
+    results: list[dict],
+    elapsed_s: float,
+    latest: Optional[dict] = None,
+    finished: bool = False,
+):
+    avg_s = sum(r["elapsed"] for r in results) / len(results) if results else None
+    completed = skipped + len(results)
+    remaining = max(total - completed, 0)
+    ok = [r for r in results if r["val_bpb"] is not None]
+    best = min(ok, key=lambda r: r["val_bpb"]) if ok else None
+    snapshot = {
+        "queue_file": queue_file,
+        "queue_name": Path(queue_file).stem,
+        "updated_at_epoch_s": time.time(),
+        "finished": finished,
+        "total_experiments": total,
+        "skipped_existing": skipped,
+        "completed_total": completed,
+        "completed_this_run": len(results),
+        "remaining": remaining,
+        "elapsed_s": elapsed_s,
+        "avg_elapsed_s": avg_s,
+        "eta_s": remaining * avg_s if avg_s is not None else None,
+        "latest_result": latest,
+        "best_result": best,
+    }
+    out_path = REPO / "logs" / f"queue_progress_{Path(queue_file).stem}.json"
+    out_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
 
 
 # ── Verify mode ───────────────────────────────────────────────────────────────
@@ -439,12 +576,13 @@ def main():
     exps = parse_queue(args.queue_file)
     total = len(exps)
     skip_n = sum(1 for e in exps if is_done(e["name"]))
+    queue_name = Path(args.queue_file).name
 
     # ── Banner ─────────────────────────────────────────────────────────────
     print(c(BOLD, "\n╔══════════════════════════════════════════════════════════════╗"))
-    print(c(BOLD,  "║  TINY100 QUEUE RUNNER                                        ║"))
+    print(c(BOLD,  "║  TINY QUEUE RUNNER                                           ║"))
     print(c(BOLD,  "╚══════════════════════════════════════════════════════════════╝"))
-    print(f"  Queue : {args.queue_file}")
+    print(f"  Queue : {args.queue_file} ({queue_name})")
     print(f"  Total : {total} experiments | {c(GRN, str(skip_n))} done | "
           f"{c(CYN, str(total - skip_n))} to run")
     print(f"  Est   : ~{(total-skip_n)*EXPECTED_S/60:.0f}min "
@@ -483,6 +621,7 @@ def main():
     results = []
     run_n = 0
     t_start = time.time()
+    write_progress_snapshot(args.queue_file, total, skip_n, results, 0.0)
 
     for exp in run_list:
         actual_idx = exps.index(exp) + 1
@@ -499,6 +638,9 @@ def main():
             total,
         )
         results.append(result)
+        elapsed_s = time.time() - t_start
+        write_progress_snapshot(args.queue_file, total, skip_n, results, elapsed_s, latest=result)
+        print_queue_progress(results, skip_n + len(results), total, elapsed_s)
 
         # Periodic summary
         if run_n % args.summary_every == 0:
@@ -516,6 +658,15 @@ def main():
     print(c(BOLD,  "║  COMPLETE                                                    ║"))
     print(c(BOLD,  "╚══════════════════════════════════════════════════════════════╝"))
     print(f"  Total wall time: {total_min:.1f}min")
+    write_progress_snapshot(
+        args.queue_file,
+        total,
+        skip_n,
+        results,
+        time.time() - t_start,
+        latest=results[-1] if results else None,
+        finished=True,
+    )
     print_summary(results, prefix="Final ")
     print_top_n(results, n=10)
 
