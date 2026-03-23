@@ -31,6 +31,7 @@ import train_gpt as tg
 
 # ── LADDER PRESETS ────────────────────────────────────────────────────────
 LADDERS = {
+    "debug":    dict(s1=1,  s2=1,  s3=None, top1=3,  top2=2, top3=1),
     "quick":    dict(s1=1,  s2=2,  s3=None, top1=5,  top2=2, top3=1),
     "standard": dict(s1=3,  s2=6,  s3=None, top1=7,  top2=3, top3=1),
     "thorough": dict(s1=10, s2=20, s3=None, top1=10, top2=5, top3=2),
@@ -41,7 +42,7 @@ LADDERS = {
 parser = argparse.ArgumentParser()
 parser.add_argument("--screen", default=None,
                     help="Path to screen config .py file defining CONFIGS list")
-parser.add_argument("--ladder", default="quick", choices=LADDERS.keys())
+parser.add_argument("--ladder", default="quick", choices=list(LADDERS.keys()))
 parser.add_argument("--topic",  default=None,
                     help="Report topic label (defaults to screen filename stem)")
 args = parser.parse_args()
