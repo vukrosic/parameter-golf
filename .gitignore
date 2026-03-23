@@ -13,6 +13,8 @@ logs/
 *.ptz
 final_model.*
 checkpoints/
+results/
+screen/
 results/**/train.log
 results/**/raw/
 results/**/wandb/

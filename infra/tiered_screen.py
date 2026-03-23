@@ -8,7 +8,7 @@ Ladder presets:
     quick     1 → 2 steps,        5 candidates → top 2  (seconds, default)
     standard  3 → 6 steps,        7 candidates → top 3  (minutes)
     thorough  10 → 20 steps,     10 candidates → top 5  (longer)
-    bot       30 → 50 → 70 steps, 10 candidates → top 5 → top 2 (3-stage)
+    bot       3 → 5 → 7 steps, 10 candidates → top 5 → top 2 (3-stage, fast test)
 
 Screen config files live in screens/<topic>.py. Each must define a CONFIGS list:
     CONFIGS = [
@@ -34,7 +34,7 @@ LADDERS = {
     "quick":    dict(s1=1,  s2=2,  s3=None, top1=5,  top2=2, top3=1),
     "standard": dict(s1=3,  s2=6,  s3=None, top1=7,  top2=3, top3=1),
     "thorough": dict(s1=10, s2=20, s3=None, top1=10, top2=5, top3=2),
-    "bot":      dict(s1=30, s2=50, s3=70,   top1=10, top2=5, top3=2),
+    "bot":      dict(s1=3,  s2=5,  s3=7,    top1=10, top2=5, top3=2),
 }
 
 # ── CLI ───────────────────────────────────────────────────────────────────
