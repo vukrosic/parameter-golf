@@ -8,7 +8,7 @@ Ladder presets:
     quick     1 → 2 steps,        5 candidates → top 2  (seconds, default)
     standard  3 → 6 steps,        7 candidates → top 3  (minutes)
     thorough  10 → 20 steps,     10 candidates → top 5  (longer)
-    bot       30 → 50 → 70 steps, 5 candidates → top 3 → top 1 (3-stage)
+    bot       30 → 50 → 70 steps, 10 candidates → top 5 → top 2 (3-stage)
 
 Screen config files live in screens/<topic>.py. Each must define a CONFIGS list:
     CONFIGS = [
@@ -34,7 +34,7 @@ LADDERS = {
     "quick":    dict(s1=1,  s2=2,  s3=None, top1=5,  top2=2, top3=1),
     "standard": dict(s1=3,  s2=6,  s3=None, top1=7,  top2=3, top3=1),
     "thorough": dict(s1=10, s2=20, s3=None, top1=10, top2=5, top3=2),
-    "bot":      dict(s1=30, s2=50, s3=70,   top1=5,  top2=3, top3=1),
+    "bot":      dict(s1=30, s2=50, s3=70,   top1=10, top2=5, top3=2),
 }
 
 # ── CLI ───────────────────────────────────────────────────────────────────
@@ -101,10 +101,10 @@ def _write_progress(stage, config_i, config_total, config_name="", stage_steps=0
         elapsed = time.perf_counter() - _progress_start
         # Estimate remaining: avg time per config × remaining configs across all stages
         avg_per_config = (elapsed / max(config_i - 1 + (stage - 1) * config_total, 1)) if (config_i > 1 or stage > 1) else 0
-        # Total configs across all stages (bot ladder: N + top2+1 + top2+1)
+        # Total configs across all stages (bot ladder: N + top2+1 + top3+1)
         s1_total = len(CONFIGS)
-        s2_total = min(TOP2 + 1, s1_total)
-        s3_total = (min(TOP2 + 1, s2_total)) if S3_STEPS else 0
+        s2_total = min(TOP2 + 1, s1_total)  # promoted + baseline
+        s3_total = (min(TOP3 + 1, s2_total)) if S3_STEPS else 0  # promoted + baseline
         total_all = s1_total + s2_total + s3_total
         # Completed so far
         done_all = 0
@@ -201,10 +201,10 @@ s2_ranked        = sorted(s2.items(), key=lambda x: x[1][0])
 # ── STAGE 3 (optional) ────────────────────────────────────────────────────
 s3, s3_ranked, s3_baseline_loss = {}, [], None
 if S3_STEPS:
-    s2_top_names = [k for k, _ in s2_ranked if k != BASELINE_KEY][:TOP2]
+    s2_top_names = [k for k, _ in s2_ranked if k != BASELINE_KEY][:TOP3]
     s3_promote   = [BASELINE_KEY] + s2_top_names
     print(f"\n{'═'*60}")
-    print(f"STAGE 3 — {S3_STEPS} step(s) — top {TOP2} promoted: {s2_top_names}")
+    print(f"STAGE 3 — {S3_STEPS} step(s) — top {TOP3} promoted: {s2_top_names}")
     print("═"*60)
     for _ci, name in enumerate(s3_promote):
         _write_progress(3, _ci + 1, len(s3_promote), name, S3_STEPS)
@@ -265,7 +265,7 @@ lines += [
     "| Run | What it tests | Loss | Baseline | Delta | Decision |",
     "|---|---|---:|---:|---:|---|",
 ]
-s2_top_names = [k for k, _ in s2_ranked if k != BASELINE_KEY][:TOP2]
+s2_top_names = [k for k, _ in s2_ranked if k != BASELINE_KEY][:TOP3]
 for k, (loss, desc) in s2_ranked:
     delta = loss - s2_baseline_loss
     if k == BASELINE_KEY:           dec = "baseline"
