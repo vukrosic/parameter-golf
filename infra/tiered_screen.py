@@ -166,7 +166,7 @@ def _update_timing(elapsed_s: float, steps: int, name: str):
     tps = elapsed_s / steps
     if _config_times:
         prev_avg = sum(_config_times) / len(_config_times)
-        if tps > 3.0 * prev_avg:
+        if tps > 1.5 * prev_avg:
             _slow_warning = f"{name}: {elapsed_s:.1f}s (expected ~{prev_avg * steps:.1f}s, {tps / prev_avg:.1f}×)"
             try:
                 os.makedirs("results", exist_ok=True)
