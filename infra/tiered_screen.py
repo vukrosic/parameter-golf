@@ -1,13 +1,14 @@
 """Single-process tiered screening. Loads CUDA + data once, loops configs.
 
 Usage:
-    python3 infra/tiered_screen.py --screen screens/<topic>.py [--ladder quick|standard|thorough]
+    python3 infra/tiered_screen.py --screen screens/<topic>.py [--ladder quick|standard|thorough|bot]
     python3 infra/tiered_screen.py  # ad-hoc: edit CONFIGS below
 
 Ladder presets:
-    quick     1 → 2 steps,   5 candidates → top 2  (seconds, default)
-    standard  3 → 6 steps,   7 candidates → top 3  (minutes)
-    thorough  10 → 20 steps, 10 candidates → top 5 (longer)
+    quick     1 → 2 steps,        5 candidates → top 2  (seconds, default)
+    standard  3 → 6 steps,        7 candidates → top 3  (minutes)
+    thorough  10 → 20 steps,     10 candidates → top 5  (longer)
+    bot       30 → 50 → 70 steps, 5 candidates → top 3 → top 1 (3-stage)
 
 Screen config files live in screens/<topic>.py. Each must define a CONFIGS list:
     CONFIGS = [
@@ -30,9 +31,10 @@ import train_gpt as tg
 
 # ── LADDER PRESETS ────────────────────────────────────────────────────────
 LADDERS = {
-    "quick":    dict(s1=1,  s2=2,  top1=5,  top2=2),
-    "standard": dict(s1=3,  s2=6,  top1=7,  top2=3),
-    "thorough": dict(s1=10, s2=20, top1=10, top2=5),
+    "quick":    dict(s1=1,  s2=2,  s3=None, top1=5,  top2=2, top3=1),
+    "standard": dict(s1=3,  s2=6,  s3=None, top1=7,  top2=3, top3=1),
+    "thorough": dict(s1=10, s2=20, s3=None, top1=10, top2=5, top3=2),
+    "bot":      dict(s1=30, s2=50, s3=70,   top1=5,  top2=3, top3=1),
 }
 
 # ── CLI ───────────────────────────────────────────────────────────────────
@@ -47,8 +49,10 @@ args = parser.parse_args()
 ladder   = LADDERS[args.ladder]
 S1_STEPS = ladder["s1"]
 S2_STEPS = ladder["s2"]
+S3_STEPS = ladder["s3"]  # None = no third stage
 TOP1     = ladder["top1"]
 TOP2     = ladder["top2"]
+TOP3     = ladder["top3"]
 
 # ── LOAD CONFIGS ──────────────────────────────────────────────────────────
 if args.screen:
@@ -87,11 +91,52 @@ FULL = dict(
     highway_net=False, skip_weight_init=1.0,
 )
 
+PROGRESS_FILE = os.path.join("results", ".screen_progress.json")
+_config_times: list[float] = []  # elapsed seconds per completed config
+_progress_start = time.perf_counter()
+
+def _write_progress(stage, config_i, config_total, config_name="", stage_steps=0):
+    """Write a progress file so external tools (Discord bot) can show live status."""
+    try:
+        elapsed = time.perf_counter() - _progress_start
+        # Estimate remaining: avg time per config × remaining configs across all stages
+        avg_per_config = (elapsed / max(config_i - 1 + (stage - 1) * config_total, 1)) if (config_i > 1 or stage > 1) else 0
+        # Total configs across all stages (bot ladder: N + top2+1 + top2+1)
+        s1_total = len(CONFIGS)
+        s2_total = min(TOP2 + 1, s1_total)
+        s3_total = (min(TOP2 + 1, s2_total)) if S3_STEPS else 0
+        total_all = s1_total + s2_total + s3_total
+        # Completed so far
+        done_all = 0
+        if stage == 1: done_all = config_i - 1
+        elif stage == 2: done_all = s1_total + config_i - 1
+        elif stage == 3: done_all = s1_total + s2_total + config_i - 1
+        remaining = max(0, total_all - done_all)
+        eta_s = int(avg_per_config * remaining) if avg_per_config > 0 else 0
+
+        os.makedirs("results", exist_ok=True)
+        with open(PROGRESS_FILE, "w") as f:
+            json.dump({"stage": stage, "config_i": config_i, "config_total": config_total,
+                        "config_name": config_name, "stage_steps": stage_steps,
+                        "topic": _topic, "ladder": args.ladder,
+                        "elapsed_s": round(elapsed), "eta_s": eta_s,
+                        "done_all": done_all, "total_all": total_all}, f)
+    except Exception:
+        pass
+
+def _clear_progress():
+    try:
+        os.remove(PROGRESS_FILE)
+    except Exception:
+        pass
+
 print("Loading data...", flush=True)
 torch.manual_seed(SEED); torch.cuda.manual_seed_all(SEED)
 train_loader = tg.DistributedTokenLoader(TRAIN_FILES, 0, 1, device)
+_stages_str = f"{S1_STEPS}→{S2_STEPS}" + (f"→{S3_STEPS}" if S3_STEPS else "")
 print(f"Data loaded. Running screen '{_topic}' with ladder '{args.ladder}' "
-      f"({S1_STEPS}→{S2_STEPS} steps, {len(CONFIGS)} candidates → top {TOP2}).\n", flush=True)
+      f"({_stages_str} steps, {len(CONFIGS)} candidates → top {TOP2}"
+      + (f" → top {TOP3}" if S3_STEPS else "") + ").\n", flush=True)
 
 # ── TRAIN LOOP ────────────────────────────────────────────────────────────
 def run_config(name, steps, arch_desc, overrides):
@@ -130,7 +175,8 @@ print("═"*60)
 print(f"STAGE 1 — {S1_STEPS} step(s) — {len(CONFIGS)} candidates")
 print("═"*60)
 s1, BASELINE_KEY = {}, CONFIGS[0][0]
-for name, desc, ov in CONFIGS:
+for _ci, (name, desc, ov) in enumerate(CONFIGS):
+    _write_progress(1, _ci + 1, len(CONFIGS), name, S1_STEPS)
     s1[name] = (run_config(f"s1_{_topic}_{name}", S1_STEPS, desc, ov), desc, ov)
 
 s1_baseline_loss = s1[BASELINE_KEY][0]
@@ -144,26 +190,50 @@ print(f"STAGE 2 — {S2_STEPS} step(s) — top {TOP2} promoted: {top_names}")
 print("═"*60)
 s2 = {}
 cfg_map = {c[0]: c for c in CONFIGS}
-for name in promote:
+for _ci, name in enumerate(promote):
+    _write_progress(2, _ci + 1, len(promote), name, S2_STEPS)
     _, desc, ov = cfg_map[name]
     s2[name] = (run_config(f"s2_{_topic}_{name}", S2_STEPS, desc, ov), desc)
 
 s2_baseline_loss = s2[BASELINE_KEY][0]
 s2_ranked        = sorted(s2.items(), key=lambda x: x[1][0])
 
+# ── STAGE 3 (optional) ────────────────────────────────────────────────────
+s3, s3_ranked, s3_baseline_loss = {}, [], None
+if S3_STEPS:
+    s2_top_names = [k for k, _ in s2_ranked if k != BASELINE_KEY][:TOP2]
+    s3_promote   = [BASELINE_KEY] + s2_top_names
+    print(f"\n{'═'*60}")
+    print(f"STAGE 3 — {S3_STEPS} step(s) — top {TOP2} promoted: {s2_top_names}")
+    print("═"*60)
+    for _ci, name in enumerate(s3_promote):
+        _write_progress(3, _ci + 1, len(s3_promote), name, S3_STEPS)
+        _, desc, ov = cfg_map[name]
+        s3[name] = (run_config(f"s3_{_topic}_{name}", S3_STEPS, desc, ov), desc)
+    s3_baseline_loss = s3[BASELINE_KEY][0]
+    s3_ranked        = sorted(s3.items(), key=lambda x: x[1][0])
+
 # ── REPORT ────────────────────────────────────────────────────────────────
 date        = datetime.date.today().strftime("%Y%m%d")
 report_path = f"results/tiered_screen_{_topic}_{date}.md"
 
+# Determine final stage results
+final_ranked       = s3_ranked if s3_ranked else s2_ranked
+final_baseline_loss = s3_baseline_loss if s3_baseline_loss is not None else s2_baseline_loss
+final_winners = [(k, l, d) for k, (l, d) in final_ranked if l < final_baseline_loss and k != BASELINE_KEY]
+final_flipped = [(k, l, d) for k, (l, d) in final_ranked if l >= final_baseline_loss and k != BASELINE_KEY]
+
+# Also track s2 winners for the 2-stage case
 s2_winners = [(k, l, d) for k, (l, d) in s2_ranked if l < s2_baseline_loss and k != BASELINE_KEY]
 s2_flipped = [(k, l, d) for k, (l, d) in s2_ranked if l >= s2_baseline_loss and k != BASELINE_KEY]
 
+_ladder_desc = f"{S1_STEPS} step(s) → {S2_STEPS} step(s)" + (f" → {S3_STEPS} step(s)" if S3_STEPS else "")
 lines = [
     f"# Tiered Screen — {_topic} — {date}",
     "",
     f"**Model:** full competition model (9L × 512d × 8/4 heads, MLP_MULT=2)  ",
-    f"**Ladder:** `{args.ladder}` — {S1_STEPS} step(s) → {S2_STEPS} step(s) | "
-    f"{len(CONFIGS)} candidates → top {TOP2}  ",
+    f"**Ladder:** `{args.ladder}` — {_ladder_desc} | "
+    f"{len(CONFIGS)} candidates → top {TOP2}" + (f" → top {TOP3}" if S3_STEPS else "") + "  ",
     "**Optimizer:** plain Adam (no Muon/compile). Loss values are relative — compare within stage only.",
     "",
 ]
@@ -195,28 +265,51 @@ lines += [
     "| Run | What it tests | Loss | Baseline | Delta | Decision |",
     "|---|---|---:|---:|---:|---|",
 ]
+s2_top_names = [k for k, _ in s2_ranked if k != BASELINE_KEY][:TOP2]
 for k, (loss, desc) in s2_ranked:
     delta = loss - s2_baseline_loss
-    if k == BASELINE_KEY:          dec = "baseline"
-    elif loss < s2_baseline_loss:  dec = "finalist ✓"
-    else:                          dec = "drop"
+    if k == BASELINE_KEY:           dec = "baseline"
+    elif S3_STEPS and k in s2_top_names: dec = "promote ✓"
+    elif not S3_STEPS and loss < s2_baseline_loss: dec = "finalist ✓"
+    else:                           dec = "drop"
     lines.append(f"| `{k}` | {desc} | {loss:.4f} | {s2_baseline_loss:.4f} | {delta:+.4f} | {dec} |")
 
-lines += ["", "---", "", "## What happened", ""]
-if s2_winners:
-    wnames = ", ".join(f"`{k}` ({d})" for k, _, d in s2_winners)
+if S3_STEPS and s3_ranked:
     lines += [
-        f"**Survived both stages:** {wnames}.",
+        "",
+        f"Promoted to stage 3: {', '.join(f'**{k}**' for k in s2_top_names)}",
+        "",
+        "---",
+        "",
+        f"### Stage 3 — {S3_STEPS} step(s): final confirmation",
+        "",
+        "| Run | What it tests | Loss | Baseline | Delta | Decision |",
+        "|---|---|---:|---:|---:|---|",
+    ]
+    for k, (loss, desc) in s3_ranked:
+        delta = loss - s3_baseline_loss
+        if k == BASELINE_KEY:         dec = "baseline"
+        elif loss < s3_baseline_loss: dec = "finalist ✓"
+        else:                         dec = "drop"
+        lines.append(f"| `{k}` | {desc} | {loss:.4f} | {s3_baseline_loss:.4f} | {delta:+.4f} | {dec} |")
+
+lines += ["", "---", "", "## What happened", ""]
+if final_winners:
+    wnames = ", ".join(f"`{k}` ({d})" for k, _, d in final_winners)
+    n_stages = 3 if S3_STEPS else 2
+    lines += [
+        f"**Survived all {n_stages} stages:** {wnames}.",
         "Ranking was consistent — this is signal, not noise. Promote to a 500-step explore run.",
     ]
 else:
-    lines.append("**Nothing beat the baseline at stage 2.** Stage-1 gains were initialization-transient. Drop everything and try a different direction.")
-if s2_flipped:
-    fnames = ", ".join(f"`{k}`" for k, _, _ in s2_flipped)
-    lines.append(f"**Flipped negative at stage 2:** {fnames} — fast-start artifact, not real.")
+    lines.append("**Nothing beat the baseline in the final stage.** Stage-1 gains were initialization-transient. Drop everything and try a different direction.")
+if final_flipped:
+    fnames = ", ".join(f"`{k}`" for k, _, _ in final_flipped)
+    lines.append(f"**Flipped negative in final stage:** {fnames} — fast-start artifact, not real.")
+_loss_progression = f"{s1_baseline_loss:.4f} → {s2_baseline_loss:.4f}" + (f" → {s3_baseline_loss:.4f}" if s3_baseline_loss else "")
 lines += [
     "",
-    f"_Baseline loss rises {s1_baseline_loss:.4f} → {s2_baseline_loss:.4f} between stages "
+    f"_Baseline loss progression: {_loss_progression} "
     "(Adam without warmup climbs briefly before descending — normal, compare within stage only)._",
 ]
 
@@ -225,6 +318,7 @@ os.makedirs("results", exist_ok=True)
 with open(report_path, "w") as f:
     f.write(report)
 
+_clear_progress()
 print(f"\n{'═'*70}")
 print(report)
 print(f"\nReport written: {report_path}")
