@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.43774212,
+    "val_loss": 2.42756735
+  },
+  "generated_at_utc": "2026-03-21T17:19:32+00:00",
+  "int8_zlib_model_bytes": 20498531,
+  "int8_zlib_total_submission_bytes": 20580184,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.4371,
+    "val_loss": 2.4265
+  },
+  "run_id": "arch_moe4_qat70"
+}

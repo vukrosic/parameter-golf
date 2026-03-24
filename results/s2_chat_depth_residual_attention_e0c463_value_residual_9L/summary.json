@@ -1,0 +1,11 @@
+{
+  "run_id": "s2_chat_depth_residual_attention_e0c463_value_residual_9L",
+  "steps": 2,
+  "elapsed_s": 0.5,
+  "train_loss": 7.4334,
+  "n_params": 17059912,
+  "arch": "\ud83d\udc41\ufe0f Attention Variant: value_residual",
+  "overrides": {
+    "attnres_mode": "value_residual"
+  }
+}

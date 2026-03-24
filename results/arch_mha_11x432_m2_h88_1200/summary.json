@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.36539048,
+    "val_loss": 2.30540463
+  },
+  "generated_at_utc": "2026-03-19T16:18:39+00:00",
+  "int8_zlib_model_bytes": 14996979,
+  "int8_zlib_total_submission_bytes": 15053172,
+  "last_eval": {
+    "max_steps": 1200,
+    "step": 1200,
+    "val_bpb": 1.3645,
+    "val_loss": 2.3039
+  },
+  "run_id": "arch_mha_11x432_m2_h88_1200"
+}

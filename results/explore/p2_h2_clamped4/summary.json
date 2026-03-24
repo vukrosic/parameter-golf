@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.48856852,
+    "val_loss": 2.51338559
+  },
+  "generated_at_utc": "2026-03-21T02:26:52+00:00",
+  "int8_zlib_model_bytes": 11074235,
+  "int8_zlib_total_submission_bytes": 11149921,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.484,
+    "val_loss": 2.5057
+  },
+  "run_id": "p2_h2_clamped4"
+}

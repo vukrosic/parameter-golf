@@ -1,4 +1,5 @@
 numpy
+matplotlib
 tqdm
 torch
 huggingface-hub

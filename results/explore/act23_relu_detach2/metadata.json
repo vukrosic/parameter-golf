@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "act23_relu_detach2",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-20T07:20:35+00:00",
+  "git": {
+    "commit": "09efa864ea5d5b9b88c5ce8792eab8fc429ff56b",
+    "commit_short": "09efa86",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/act23_relu_detach2.txt",
+  "run_id": "act23_relu_detach2"
+}

@@ -1,0 +1,17 @@
+{
+  "run_id": "p2_h3_bipolar",
+  "status": "IN_PROGRESS",
+  "config": {"MLP_ACT": "bipolar_relu2", "max_steps": 500},
+  "step_avg_ms": 3461,
+  "last_step_reached": 360,
+  "val_checkpoints": [
+    {"step": 50,  "val_bpb": 2.4948},
+    {"step": 100, "val_bpb": 2.0546},
+    {"step": 150, "val_bpb": 1.8246},
+    {"step": 200, "val_bpb": 1.7099},
+    {"step": 250, "val_bpb": 1.6345},
+    {"step": 300, "val_bpb": 1.5874},
+    {"step": 350, "val_bpb": 1.5507}
+  ],
+  "notes": "bipolar_relu2: relu(x)² - 0.25*relu(-x)². Running slow at 3461ms/step. At step 350 val_bpb=1.5507 which is significantly worse than relu² at same step (~1.50). Dead candidate."
+}

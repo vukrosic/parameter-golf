@@ -58,6 +58,8 @@ class Hyperparameters:
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 1024))
     max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
+    checkpoint_every = int(os.environ.get("CHECKPOINT_EVERY", 0))  # 0 = disabled
+    resume_from = os.environ.get("RESUME_FROM", "")  # path to checkpoint dir
 
     # Model shape.
     vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
@@ -85,6 +87,34 @@ class Hyperparameters:
     beta2 = float(os.environ.get("BETA2", 0.95))
     adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
     grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.0))
+
+    # AttnRes mode: "none", "cumsum", "value_residual", "value_residual_gated",
+    #   "value_residual_mid", "weighted", "weighted_vector"
+    attnres_mode = os.environ.get("ATTNRES_MODE", "none")
+
+    # MLP activation: "relu2" (default), "relu", "silu", "gelu", "swiglu", "geglu"
+    # GLU variants scale hidden dim to ~2/3 to match parameter count.
+    mlp_act = os.environ.get("MLP_ACT", "relu2")
+    act_power = float(os.environ.get("ACT_POWER", 2.0))
+    act_gate_floor = float(os.environ.get("ACT_GATE_FLOOR", 0.5))
+
+    # Architecture experiments (0 = disabled for all)
+    num_unique_blocks = int(os.environ.get("NUM_UNIQUE_BLOCKS", "0"))
+    num_cycles = int(os.environ.get("NUM_CYCLES", "1"))
+    embed_bottleneck = int(os.environ.get("EMBED_BOTTLENECK", "0"))
+    conv_kernel = int(os.environ.get("CONV_KERNEL", "0"))
+    num_experts = int(os.environ.get("NUM_EXPERTS", "0"))
+    qat_start_frac = float(os.environ.get("QAT_START_FRAC", "0.0"))
+
+    # Residual connection experiments
+    # RESID_SCALE_INIT: initial value for attn_scale/mlp_scale (1.0=default, 0.1=LayerScale, 0.0=ReZero)
+    resid_scale_init = float(os.environ.get("RESID_SCALE_INIT", "1.0"))
+    # STOCH_DEPTH_RATE: drop-path probability per block during training (0.0=disabled)
+    stoch_depth_rate = float(os.environ.get("STOCH_DEPTH_RATE", "0.0"))
+    # HIGHWAY_NET: replace fixed attn/mlp_scale with input-dependent sigmoid gate (dim→1 linear)
+    highway_net = bool(int(os.environ.get("HIGHWAY_NET", "0")))
+    # SKIP_WEIGHT_INIT: initial value for U-net encoder→decoder skip weights (1.0=default, 0.0=learn from scratch)
+    skip_weight_init = float(os.environ.get("SKIP_WEIGHT_INIT", "1.0"))
 
 # -----------------------------
 # MUON OPTIMIZER 
@@ -289,7 +319,7 @@ CONTROL_TENSOR_NAME_PATTERNS = tuple(
     pattern
     for pattern in os.environ.get(
         "CONTROL_TENSOR_NAME_PATTERNS",
-        "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights",
+        "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,v_gate_param,layer_weights",
     ).split(",")
     if pattern
 )
@@ -508,9 +538,14 @@ class RMSNorm(nn.Module):
 
 class CastedLinear(nn.Linear):
     # Keep weights in fp32 for optimizer/state quality, cast at matmul time for bf16 compute.
+    qat_enabled = False
     def forward(self, x: Tensor) -> Tensor:
+        w = self.weight
+        if self.training and CastedLinear.qat_enabled and w.ndim == 2:
+            scale = w.abs().amax(dim=-1, keepdim=True).clamp_min(1.0 / 127.0) / 127.0
+            w = w + ((w / scale).round().clamp(-127, 127) * scale - w).detach()
         bias = self.bias.to(x.dtype) if self.bias is not None else None
-        return F.linear(x, self.weight.to(x.dtype), bias)
+        return F.linear(x, w.to(x.dtype), bias)
 
 
 def restore_low_dim_params_to_fp32(module: nn.Module) -> None:
@@ -560,6 +595,7 @@ class CausalSelfAttention(nn.Module):
         num_kv_heads: int,
         rope_base: float,
         qk_gain_init: float,
+        v_gate: bool = False,
     ):
         super().__init__()
         if dim % num_heads != 0:
@@ -579,12 +615,19 @@ class CausalSelfAttention(nn.Module):
         self.proj._zero_init = True
         self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
         self.rotary = Rotary(self.head_dim, base=rope_base)
+        self.v_gate_param = nn.Parameter(torch.zeros(1, dtype=torch.float32)) if v_gate else None
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, v_residual: Tensor | None = None, return_v: bool = False) -> Tensor | tuple[Tensor, Tensor]:
         bsz, seqlen, dim = x.shape
         q = self.c_q(x).reshape(bsz, seqlen, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.c_k(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim).transpose(1, 2)
         v = self.c_v(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v0 = v if return_v else None
+        if v_residual is not None:
+            if self.v_gate_param is not None:
+                v = v + torch.sigmoid(self.v_gate_param.to(dtype=v.dtype)) * v_residual
+            else:
+                v = v + v_residual
         q = F.rms_norm(q, (q.size(-1),))
         k = F.rms_norm(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
@@ -600,21 +643,498 @@ class CausalSelfAttention(nn.Module):
             enable_gqa=(self.num_kv_heads != self.num_heads),
         )
         y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)
-        return self.proj(y)
+        out = self.proj(y)
+        if return_v:
+            return out, v0
+        return out
 
+
+class _SquareConstGrad(torch.autograd.Function):
+    """Forward: relu(x)². Backward: 1(x>0), i.e. constant gradient for active neurons."""
+    @staticmethod
+    def forward(ctx, x):
+        mask = x > 0
+        ctx.save_for_backward(mask)
+        return torch.where(mask, x * x, torch.zeros_like(x))
+    @staticmethod
+    def backward(ctx, grad_output):
+        mask, = ctx.saved_tensors
+        return grad_output * mask.float()
+
+class _Relu2CustomGrad(torch.autograd.Function):
+    """Forward: relu(x)². Backward: custom gradient scaling for H1 experiments."""
+    @staticmethod
+    def forward(ctx, x, mode):
+        mask = x > 0
+        ctx.save_for_backward(x, mask)
+        ctx.mode = mode
+        return torch.where(mask, x * x, torch.zeros_like(x))
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, mask = ctx.saved_tensors
+        mode = ctx.mode
+        if mode == "grad1_5x":
+            g = 1.5 * x
+        elif mode == "grad3x":
+            g = 3.0 * x
+        elif mode == "gradsqrt":
+            g = torch.sqrt(x.clamp(min=1e-8))
+        elif mode == "gradx2":
+            g = x * x
+        elif mode == "gradfloor":
+            g = torch.clamp(2.0 * x, min=0.5)
+        elif mode == "gradceil":
+            g = torch.clamp(2.0 * x, max=4.0)
+        else:
+            g = 2.0 * x
+        return grad_output * torch.where(mask, g, torch.zeros_like(x)), None
+
+class _Leaky05SquareConstGrad(torch.autograd.Function):
+    """Forward: leaky_relu(x, 0.5)². Backward: constant 1 everywhere."""
+    @staticmethod
+    def forward(ctx, x):
+        y = torch.where(x >= 0, x, 0.5 * x)
+        return y * y
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
+
+class _Leaky05SquareGradfloor(torch.autograd.Function):
+    """Forward: leaky_relu(x, 0.5)². Backward: grad floored at 0.5 (never zero gradient)."""
+    @staticmethod
+    def forward(ctx, x):
+        y = torch.where(x >= 0, x, 0.5 * x)
+        ctx.save_for_backward(x)
+        return y * y
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, = ctx.saved_tensors
+        # Natural gradient of leaky(0.5,x)² is 2x for x>=0, 0.5x for x<0.
+        # We floor the absolute gradient at 0.5 to prevent neuron death near zero.
+        g = torch.where(x >= 0, 2.0 * x, 0.5 * x)
+        g = torch.sign(g) * torch.clamp(g.abs(), min=0.5)
+        return grad_output * g
+
+class _Leaky08SquareGradfloor(torch.autograd.Function):
+    """Forward: leaky_relu(x, 0.8)². Backward: grad floored at 0.5."""
+    @staticmethod
+    def forward(ctx, x):
+        y = torch.where(x >= 0, x, 0.8 * x)
+        ctx.save_for_backward(x)
+        return y * y
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, = ctx.saved_tensors
+        # Natural gradient of leaky(0.8,x)² is 2x for x>=0, 1.28x for x<0.
+        # Floor at 0.5 to prevent neuron death near zero.
+        g = torch.where(x >= 0, 2.0 * x, 1.28 * x)
+        g = torch.sign(g) * torch.clamp(g.abs(), min=0.5)
+        return grad_output * g
+
+class _Abs2ConstGrad(torch.autograd.Function):
+    """Forward: x². Backward: constant 1 everywhere."""
+    @staticmethod
+    def forward(ctx, x):
+        return x * x
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
 
 class MLP(nn.Module):
-    # relu^2 MLP from the original modded-nanogpt setup
-    def __init__(self, dim: int, mlp_mult: int):
+    def __init__(self, dim: int, mlp_mult: int, act: str = "relu2", act_power: float = 2.0, act_gate_floor: float = 0.5):
         super().__init__()
-        hidden = mlp_mult * dim
+        self.act = act
+        self.act_power = act_power
+        self.act_gate_floor = act_gate_floor
+        is_glu = act in (
+            "swiglu",
+            "geglu",
+            "swiglu2",
+            "gated_relu2",
+            "mild_gated_relu2",
+            "power_relu_mildgate",
+            "power_silu_mildgate",
+            "swirelu",
+            "swirelu2",
+            "relu2_softplus_gate",
+            "reluglu",
+            "relu2_lingate",
+            "relu2_postsigmoid",
+            "gated_relu22",
+            "mild_gated_relu22",
+        )
+        # "narrow" variants use 2/3 hidden (same width as GLU) but no gate matrix.
+        is_narrow = act in ("relu2_narrow",)
+        # GLU variants use 2/3 hidden to match parameter count (3 matrices vs 2).
+        hidden = (2 * mlp_mult * dim + 1) // 3 if (is_glu or is_narrow) else mlp_mult * dim
         self.fc = CastedLinear(dim, hidden, bias=False)
+        if is_glu:
+            self.fc_gate = CastedLinear(dim, hidden, bias=False)
         self.proj = CastedLinear(hidden, dim, bias=False)
         self.proj._zero_init = True
 
     def forward(self, x: Tensor) -> Tensor:
-        x = torch.relu(self.fc(x))
-        return self.proj(x.square())
+        if self.act == "relu2":
+            x = torch.relu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "relu":
+            return self.proj(torch.relu(self.fc(x)))
+        elif self.act == "relu15":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 1.5))
+        elif self.act == "relu18":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 1.8))
+        elif self.act == "silu":
+            return self.proj(F.silu(self.fc(x)))
+        elif self.act == "gelu":
+            return self.proj(F.gelu(self.fc(x)))
+        elif self.act == "relu22":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 2.2))
+        elif self.act == "relu24":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 2.4))
+        elif self.act == "relu25":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, 2.5))
+        elif self.act == "power_relu":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.pow(x, self.act_power))
+        elif self.act == "power_silu":
+            x = F.silu(self.fc(x))
+            return self.proj(torch.pow(x, self.act_power))
+        elif self.act == "silu2":
+            x = F.silu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "swiglu":
+            return self.proj(F.silu(self.fc(x)) * self.fc_gate(x))
+        elif self.act == "geglu":
+            return self.proj(F.gelu(self.fc(x)) * self.fc_gate(x))
+        elif self.act == "swiglu2":
+            x = F.silu(self.fc(x)) * self.fc_gate(x)
+            return self.proj(x.square())
+        elif self.act == "mish":
+            return self.proj(F.mish(self.fc(x)))
+        elif self.act == "relu3":
+            x = torch.relu(self.fc(x))
+            return self.proj(x * x.square())
+        elif self.act == "gated_relu2":
+            # relu2 with a learned sigmoid gate: sparsity + learned selection
+            h = torch.relu(self.fc(x)).square()
+            return self.proj(h * torch.sigmoid(self.fc_gate(x)))
+        elif self.act == "mild_gated_relu2":
+            # Keep relu2 as the main signal; let the gate only rescale mildly.
+            h = torch.relu(self.fc(x)).square()
+            gate = 0.5 + 0.5 * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h * gate)
+        elif self.act == "gated_relu22":
+            # Power-law relu with a bounded gate.
+            h = torch.pow(torch.relu(self.fc(x)), 2.2)
+            return self.proj(h * torch.sigmoid(self.fc_gate(x)))
+        elif self.act == "mild_gated_relu22":
+            # Same mild gate idea with slightly stronger-than-square amplification.
+            h = torch.pow(torch.relu(self.fc(x)), 2.2)
+            gate = 0.5 + 0.5 * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h * gate)
+        elif self.act == "power_relu_mildgate":
+            # Generic hard-select + power amplify + mild bounded refinement gate.
+            h = torch.pow(torch.relu(self.fc(x)), self.act_power)
+            gate = self.act_gate_floor + (1.0 - self.act_gate_floor) * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h * gate)
+        elif self.act == "power_silu_mildgate":
+            # Smooth-selector counterpart to the ReLU family.
+            h = torch.pow(F.silu(self.fc(x)), self.act_power)
+            gate = self.act_gate_floor + (1.0 - self.act_gate_floor) * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h * gate)
+        elif self.act == "swirelu":
+            # Mix ReLU sparsity on the value path with SwiGLU's smooth gate.
+            h = torch.relu(self.fc(x))
+            return self.proj(h * F.silu(self.fc_gate(x)))
+        elif self.act == "swirelu2":
+            # ReLU² core with a SwiGLU-style gate.
+            h = torch.relu(self.fc(x)).square()
+            return self.proj(h * F.silu(self.fc_gate(x)))
+        elif self.act == "relu2_softplus_gate":
+            # ReLU² with a strictly-positive smooth gate.
+            h = torch.relu(self.fc(x)).square()
+            return self.proj(h * F.softplus(self.fc_gate(x)))
+        elif self.act == "reluglu":
+            # ReLU value path with a plain linear GLU gate.
+            h = torch.relu(self.fc(x))
+            return self.proj(h * self.fc_gate(x))
+        elif self.act == "relu2_lingate":
+            # ReLU² core with an unconstrained linear gate.
+            h = torch.relu(self.fc(x)).square()
+            return self.proj(h * self.fc_gate(x))
+        elif self.act == "relu2_postsigmoid":
+            # Gate first, then square; tests whether quadratic amplification
+            # is more useful before or after selection.
+            h = torch.relu(self.fc(x)) * torch.sigmoid(self.fc_gate(x))
+            return self.proj(h.square())
+        # --- Tier 1: isolate why hard zeros + square interact ---
+        elif self.act == "clamp_silu2":
+            # silu with hard zeros added, then square. Tests if zeros are the key.
+            x = torch.clamp(F.silu(self.fc(x)), min=0)
+            return self.proj(x.square())
+        elif self.act == "clamp_gelu2":
+            # gelu with hard zeros added, then square.
+            x = torch.clamp(F.gelu(self.fc(x)), min=0)
+            return self.proj(x.square())
+        elif self.act == "softplus2":
+            # Always positive, never zero. Tests if non-negative + square is enough.
+            x = F.softplus(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "relu2_narrow":
+            # relu2 at 2/3 hidden dim (no gate). Parameter-matched to GLU variants.
+            x = torch.relu(self.fc(x))
+            return self.proj(x.square())
+        # --- Tier 2: understand the threshold shape ---
+        elif self.act == "leaky_relu2":
+            # Small leak (0.01), near-zero negatives. Tests how strict zeros must be.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.01)
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_01":
+            # Bigger leak (0.1). If much worse, hard zeros really matter.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.1)
+            return self.proj(x.square())
+        # --- Tier 3: test positive-side linearity hypothesis ---
+        elif self.act == "sharp_softplus2":
+            # softplus(x, beta=10)² — approaches relu² as beta grows.
+            # If this matches relu², positive-side linearity is the answer.
+            x = F.softplus(self.fc(x), beta=10)
+            return self.proj(x.square())
+        elif self.act == "sharper_softplus2":
+            # softplus(x, beta=50)² — even closer to relu.
+            x = F.softplus(self.fc(x), beta=50)
+            return self.proj(x.square())
+        elif self.act == "elu2":
+            # elu(x) = x for x > 0, exp(x)-1 for x < 0.
+            # Same positive side as relu, but smooth + non-zero negatives.
+            # Tests: is positive-side linearity sufficient without hard zeros?
+            x = F.elu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "abs2":
+            # |x|² = x² everywhere. No zeros, perfectly linear on both sides.
+            # Tests: is it about linearity alone, or does suppressing negatives matter?
+            x = self.fc(x)
+            return self.proj(x.square())
+        elif self.act == "hard_shrink2":
+            # Zero in [-0.5, 0.5], identity outside. More sparsity than relu.
+            x = F.hardshrink(self.fc(x), lambd=0.5)
+            return self.proj(x.square())
+        elif self.act == "hard_shrink2_02":
+            # Milder shrinkage: zero in [-0.2, 0.2].
+            x = F.hardshrink(self.fc(x), lambd=0.2)
+            return self.proj(x.square())
+        elif self.act == "shifted_relu2_pos":
+            # relu(x - 0.5)² — threshold at +0.5, more sparsity.
+            x = torch.relu(self.fc(x) - 0.5)
+            return self.proj(x.square())
+        elif self.act == "shifted_relu2_neg":
+            # relu(x + 0.5)² — threshold at -0.5, less sparsity.
+            x = torch.relu(self.fc(x) + 0.5)
+            return self.proj(x.square())
+        elif self.act == "celu2":
+            # celu: C1-smooth, linear for x>0, exponential for x<0.
+            x = F.celu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "softplus_centered2":
+            # softplus(x) - ln(2), then square. Zero-centered, smooth.
+            x = F.softplus(self.fc(x)) - 0.6931471805599453
+            return self.proj(x.square())
+        elif self.act == "selu2":
+            # selu squared. Self-normalizing, linear positive side.
+            x = F.selu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_05":
+            # Half-scale negatives. Tests large leak.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+            return self.proj(x.square())
+        elif self.act == "threshold2":
+            # Hard threshold at 0.5: zero if x < 0.5, else x. Discontinuous.
+            h = self.fc(x)
+            x = torch.where(h > 0.5, h, torch.zeros_like(h))
+            return self.proj(x.square())
+        elif self.act == "softshrink2":
+            # sign(x) * max(|x| - 0.5, 0), then square. Symmetric sparsity.
+            x = F.softshrink(self.fc(x), lambd=0.5)
+            return self.proj(x.square())
+        # --- Wave 23: isolate WHY squaring works ---
+        elif self.act == "relu_scaled":
+            # 2·relu(x) — match relu²'s output magnitude without squaring.
+            # Tests H1: is squaring just about bigger outputs?
+            x = torch.relu(self.fc(x)) * 2.0
+            return self.proj(x)
+        elif self.act == "relu_detach2":
+            # relu(x) · stop_gradient(relu(x)) — same output as relu²,
+            # but gradient = relu(x), not 2·relu(x). Tests if the doubled
+            # gradient (adaptive LR proportional to activation) matters.
+            h = torch.relu(self.fc(x))
+            return self.proj(h * h.detach())
+        elif self.act == "abs_detach2":
+            # x · stop_gradient(x) = x² forward, gradient = x backward.
+            # Same as relu_detach2 but without hard zeros.
+            h = self.fc(x)
+            return self.proj(h * h.detach())
+        elif self.act == "relu_cubed":
+            # relu(x)³ — more extreme amplification than squaring.
+            # Already tested at 500 steps (p=3 diverged). Retry cleanly.
+            x = torch.relu(self.fc(x))
+            return self.proj(x * x * x)
+        elif self.act == "relu_pow15":
+            # relu(x)^1.5 — between linear and quadratic.
+            # Tests if the benefit is continuous in exponent.
+            x = torch.relu(self.fc(x))
+            return self.proj(x * x.sqrt())
+        elif self.act == "leaky_relu2_03":
+            # leak=0.3. Mapping the optimal leak rate.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.3)
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_07":
+            # leak=0.7. Mapping the optimal leak rate.
+            x = F.leaky_relu(self.fc(x), negative_slope=0.7)
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_10":
+            # leak=1.0 = abs² = x². Sanity check it matches abs2.
+            x = F.leaky_relu(self.fc(x), negative_slope=1.0)
+            return self.proj(x.square())
+        # --- Wave 25: critique-driven experiments ---
+        elif self.act == "relu2_initscale":
+            # relu(x)² × 2. At init, relu zeros ~50% of activations, so
+            # relu² output variance ≈ half of abs². Multiplying by 2
+            # matches the init-time variance. If the early-training gap
+            # between relu² and abs² disappears, init scale was the confound.
+            x = torch.relu(self.fc(x))
+            return self.proj(x.square() * 2.0)
+        elif self.act == "relu2_constgrad":
+            # Forward: relu(x)². Backward: constant 1(x>0) — NOT proportional
+            # to activation. Tests whether adaptive gradient truly matters.
+            # The detach experiment (wave 23) was flawed: it halved gradient
+            # scale but kept it adaptive. This removes adaptivity entirely.
+            return self.proj(_SquareConstGrad.apply(self.fc(x)))
+        elif self.act == "tanh2":
+            # tanh(x)². Simple function but compresses signal to [-1,1]
+            # before squaring. Tests "simplicity" vs "signal preservation":
+            # if tanh² is bad, signal preservation is the right framing.
+            x = torch.tanh(self.fc(x))
+            return self.proj(x.square())
+        # --- Phase 2: H1 — gradient scaling experiments (custom backward) ---
+        elif self.act == "relu2_grad1_5x":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "grad1_5x"))
+        elif self.act == "relu2_grad3x":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "grad3x"))
+        elif self.act == "relu2_gradsqrt":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradsqrt"))
+        elif self.act == "relu2_gradx2":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradx2"))
+        elif self.act == "leaky05_constgrad":
+            return self.proj(_Leaky05SquareConstGrad.apply(self.fc(x)))
+        elif self.act == "abs2_constgrad":
+            return self.proj(_Abs2ConstGrad.apply(self.fc(x)))
+        elif self.act == "relu2_gradfloor":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradfloor"))
+        elif self.act == "leaky05_gradfloor":
+            return self.proj(_Leaky05SquareGradfloor.apply(self.fc(x)))
+        elif self.act == "leaky08_gradfloor":
+            return self.proj(_Leaky08SquareGradfloor.apply(self.fc(x)))
+        elif self.act == "relu2_gradceil":
+            return self.proj(_Relu2CustomGrad.apply(self.fc(x), "gradceil"))
+        # --- Phase 2: H2 — signal compression experiments ---
+        elif self.act == "hardtanh2":
+            x = F.hardtanh(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "softsign2":
+            h = self.fc(x)
+            x = h / (1.0 + h.abs())
+            return self.proj(x.square())
+        elif self.act == "sigmoid2":
+            x = torch.sigmoid(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "arctan_sq":
+            x = torch.arctan(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "erf2":
+            x = torch.erf(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "tanh_scaled2":
+            x = 2.0 * torch.tanh(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "relu2_clamped4":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.clamp(x.square(), max=4.0))
+        elif self.act == "relu2_clamped16":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.clamp(x.square(), max=16.0))
+        elif self.act == "log1p_relu2":
+            x = torch.relu(self.fc(x))
+            return self.proj(torch.log1p(x.square()))
+        # --- Phase 2: H3 — negative-side information experiments ---
+        elif self.act == "x_absx":
+            h = self.fc(x)
+            return self.proj(h * h.abs())
+        elif self.act == "elu03_2":
+            x = F.elu(self.fc(x), alpha=0.3)
+            return self.proj(x.square())
+        elif self.act == "gelu2":
+            x = F.gelu(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "mish2":
+            x = F.mish(self.fc(x))
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_02":
+            x = F.leaky_relu(self.fc(x), negative_slope=0.2)
+            return self.proj(x.square())
+        elif self.act == "leaky_relu2_08":
+            x = F.leaky_relu(self.fc(x), negative_slope=0.8)
+            return self.proj(x.square())
+        elif self.act == "relu2_linneg05":
+            # relu(x)² for x>0, 0.5*|x| for x<0. Tests if negative side
+            # needs adaptive gradients (H1) or just nonzero signal (H3).
+            h = self.fc(x)
+            pos = torch.relu(h).square()
+            neg = 0.5 * torch.relu(-h)
+            return self.proj(pos - neg)
+        elif self.act == "bipolar_relu2":
+            # relu(x)² - 0.25*relu(-x)². Output can go negative.
+            h = self.fc(x)
+            return self.proj(torch.relu(h).square() - 0.25 * torch.relu(-h).square())
+        # --- Phase 2: cross-hypothesis and edge cases ---
+        elif self.act == "leaky05_cubed":
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+            return self.proj(x * x * x)
+        elif self.act == "leaky05_pow15":
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+            return self.proj(x.abs().pow(1.5) * x.sign())
+        elif self.act == "softplus2_beta5":
+            x = F.softplus(self.fc(x), beta=5)
+            return self.proj(x.square())
+        elif self.act == "softplus2_beta05":
+            x = F.softplus(self.fc(x), beta=0.5)
+            return self.proj(x.square())
+        elif self.act == "celu05_2":
+            x = F.celu(self.fc(x), alpha=0.5)
+            return self.proj(x.square())
+        elif self.act == "x_silu":
+            h = self.fc(x)
+            return self.proj(h * F.silu(h))
+        elif self.act == "x_tanh":
+            h = self.fc(x)
+            return self.proj(h * torch.tanh(h))
+        else:
+            raise ValueError(f"Unknown MLP_ACT: {self.act!r}")
+
+
+class SoftMoE(nn.Module):
+    """Soft mixture of experts: weighted average of expert outputs. No discrete routing."""
+    def __init__(self, dim: int, mlp_mult: int, num_experts: int, **mlp_kwargs):
+        super().__init__()
+        expert_mult = max(1, mlp_mult // num_experts)
+        self.experts = nn.ModuleList([MLP(dim, expert_mult, **mlp_kwargs) for _ in range(num_experts)])
+        self.router = CastedLinear(dim, num_experts, bias=False)
+    def forward(self, x: Tensor) -> Tensor:
+        w = self.router(x).softmax(dim=-1)  # (B, S, E)
+        return sum(w[..., i:i+1] * self.experts[i](x) for i in range(len(self.experts)))
 
 
 class Block(nn.Module):
@@ -626,23 +1146,71 @@ class Block(nn.Module):
         mlp_mult: int,
         rope_base: float,
         qk_gain_init: float,
+        v_gate: bool = False,
+        mlp_act: str = "relu2",
+        act_power: float = 2.0,
+        act_gate_floor: float = 0.5,
+        conv_kernel: int = 0,
+        num_experts: int = 0,
+        resid_scale_init: float = 1.0,
+        stoch_depth_rate: float = 0.0,
+        highway_net: bool = False,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
-        self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init)
-        self.mlp = MLP(dim, mlp_mult)
-        self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
-        self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
+        self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init, v_gate=v_gate)
+        if num_experts > 0:
+            self.mlp = SoftMoE(dim, mlp_mult, num_experts, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
+        else:
+            self.mlp = MLP(dim, mlp_mult, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
+        self.attn_scale = nn.Parameter(torch.full((dim,), resid_scale_init, dtype=torch.float32))
+        self.mlp_scale = nn.Parameter(torch.full((dim,), resid_scale_init, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
+        self.conv = None
+        if conv_kernel > 0:
+            self.conv = nn.Conv1d(dim, dim, conv_kernel, padding=conv_kernel - 1, groups=dim, bias=False)
+        self.stoch_depth_rate = stoch_depth_rate
+        # Highway: input-dependent gate (dim→1 linear, cheap: O(dim) params per gate)
+        self.highway_gate_attn = CastedLinear(dim, 1, bias=True) if highway_net else None
+        self.highway_gate_mlp = CastedLinear(dim, 1, bias=True) if highway_net else None
 
-    def forward(self, x: Tensor, x0: Tensor) -> Tensor:
+    def _drop_path(self, contrib: Tensor) -> Tensor:
+        """Stochastic depth: drop entire residual contribution with probability stoch_depth_rate."""
+        if not self.training or self.stoch_depth_rate == 0.0:
+            return contrib
+        keep_prob = 1.0 - self.stoch_depth_rate
+        # Per-sample mask: shape (B, 1, 1) so full sequence is kept or dropped together
+        mask = torch.rand(contrib.size(0), 1, 1, device=contrib.device, dtype=contrib.dtype)
+        mask = (mask < keep_prob).to(contrib.dtype) / keep_prob
+        return contrib * mask
+
+    def forward(self, x: Tensor, x0: Tensor, attn_residual: Tensor | None = None, v_residual: Tensor | None = None, return_v: bool = False) -> tuple[Tensor, Tensor] | tuple[Tensor, Tensor, Tensor]:
         mix = self.resid_mix.to(dtype=x.dtype)
         x = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
-        attn_out = self.attn(self.attn_norm(x))
-        x = x + self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
-        x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(self.mlp_norm(x))
-        return x
+        if self.conv is not None:
+            x = x + self.conv(x.transpose(1, 2))[:, :, :x.size(1)].transpose(1, 2)
+        if attn_residual is not None:
+            x = x + attn_residual
+        if return_v:
+            attn_out, v0 = self.attn(self.attn_norm(x), v_residual=v_residual, return_v=True)
+        else:
+            attn_out = self.attn(self.attn_norm(x), v_residual=v_residual)
+        if self.highway_gate_attn is not None:
+            # Input-dependent gate: scalar per token (dim→1), replaces fixed attn_scale
+            gate_a = torch.sigmoid(self.highway_gate_attn(x))  # (B, S, 1)
+            x = x + self._drop_path(gate_a * attn_out)
+        else:
+            x = x + self._drop_path(self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out)
+        mlp_out = self.mlp(self.mlp_norm(x))
+        if self.highway_gate_mlp is not None:
+            gate_m = torch.sigmoid(self.highway_gate_mlp(x))  # (B, S, 1)
+            x = x + self._drop_path(gate_m * mlp_out)
+        else:
+            x = x + self._drop_path(self.mlp_scale.to(dtype=x.dtype)[None, None, :] * mlp_out)
+        if return_v:
+            return x, attn_out, v0
+        return x, attn_out
 
 
 class GPT(nn.Module):
@@ -659,6 +1227,19 @@ class GPT(nn.Module):
         logit_softcap: float,
         rope_base: float,
         qk_gain_init: float,
+        attnres_mode: str = "none",
+        mlp_act: str = "relu2",
+        act_power: float = 2.0,
+        act_gate_floor: float = 0.5,
+        embed_bottleneck: int = 0,
+        num_unique_blocks: int = 0,
+        num_cycles: int = 1,
+        conv_kernel: int = 0,
+        num_experts: int = 0,
+        resid_scale_init: float = 1.0,
+        stoch_depth_rate: float = 0.0,
+        highway_net: bool = False,
+        skip_weight_init: float = 1.0,
     ):
         super().__init__()
         if logit_softcap <= 0.0:
@@ -666,11 +1247,30 @@ class GPT(nn.Module):
         self.tie_embeddings = tie_embeddings
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
-        self.tok_emb = nn.Embedding(vocab_size, model_dim)
-        self.num_encoder_layers = num_layers // 2
-        self.num_decoder_layers = num_layers - self.num_encoder_layers
-        self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
-        self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
+        self.attnres_mode = attnres_mode
+        # Factorized embedding: vocab→bottleneck→model_dim
+        self.embed_proj = None
+        if embed_bottleneck > 0:
+            self.tok_emb = nn.Embedding(vocab_size, embed_bottleneck)
+            self.embed_proj = CastedLinear(embed_bottleneck, model_dim, bias=False)
+        else:
+            self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        # Weight sharing: create fewer unique blocks, cycle through them
+        self.num_cycles = num_cycles if num_unique_blocks > 0 else 1
+        actual_blocks = num_unique_blocks if num_unique_blocks > 0 else num_layers
+        effective_layers = actual_blocks * self.num_cycles
+        self.weight_sharing = num_unique_blocks > 0
+        if self.weight_sharing:
+            self.num_encoder_layers = effective_layers // 2
+            self.num_decoder_layers = effective_layers - self.num_encoder_layers
+            self.num_skip_weights = 0
+            self.skip_weights = nn.Parameter(torch.zeros(0, dtype=torch.float32))
+        else:
+            self.num_encoder_layers = num_layers // 2
+            self.num_decoder_layers = num_layers - self.num_encoder_layers
+            self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
+            self.skip_weights = nn.Parameter(torch.full((self.num_skip_weights, model_dim), skip_weight_init, dtype=torch.float32))
+        use_v_gate = attnres_mode == "value_residual_gated"
         self.blocks = nn.ModuleList(
             [
                 Block(
@@ -680,10 +1280,30 @@ class GPT(nn.Module):
                     mlp_mult,
                     rope_base,
                     qk_gain_init,
+                    v_gate=use_v_gate,
+                    mlp_act=mlp_act,
+                    act_power=act_power,
+                    act_gate_floor=act_gate_floor,
+                    conv_kernel=conv_kernel,
+                    num_experts=num_experts,
+                    resid_scale_init=resid_scale_init,
+                    stoch_depth_rate=stoch_depth_rate,
+                    highway_net=highway_net,
                 )
-                for i in range(num_layers)
+                for i in range(actual_blocks)
             ]
         )
+        # Weighted inter-layer attention: each layer learns weights over all previous outputs
+        if attnres_mode == "weighted":
+            self.layer_weights = nn.ParameterList([
+                nn.Parameter(torch.zeros(i + 1, dtype=torch.float32)) for i in range(num_layers)
+            ])
+        elif attnres_mode == "weighted_vector":
+            self.layer_weights = nn.ParameterList([
+                nn.Parameter(torch.zeros(i + 1, model_dim, dtype=torch.float32)) for i in range(num_layers)
+            ])
+        else:
+            self.layer_weights = None
         self.final_norm = RMSNorm()
         self.lm_head = None if tie_embeddings else CastedLinear(model_dim, vocab_size, bias=False)
         if self.lm_head is not None:
@@ -699,23 +1319,69 @@ class GPT(nn.Module):
 
     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
         x = self.tok_emb(input_ids)
+        if self.embed_proj is not None:
+            x = self.embed_proj(x)
         x = F.rms_norm(x, (x.size(-1),))
         x0 = x
-        skips: list[Tensor] = []
-
-        # First half stores skips; second half reuses them in reverse order.
-        for i in range(self.num_encoder_layers):
-            x = self.blocks[i](x, x0)
-            skips.append(x)
-        for i in range(self.num_decoder_layers):
-            if skips:
-                x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            x = self.blocks[self.num_encoder_layers + i](x, x0)
+        # Weight sharing: simple pass through blocks × cycles (no U-Net)
+        if self.weight_sharing:
+            for _cycle in range(self.num_cycles):
+                for block in self.blocks:
+                    x, _ = block(x, x0)
+        else:
+            skips: list[Tensor] = []
+            mode = self.attnres_mode
+            is_vr = mode in ("value_residual", "value_residual_gated", "value_residual_mid")
+            attn_cumsum: Tensor | None = None
+            v_res: Tensor | None = None
+            vr_capture_layer = self.num_encoder_layers // 2 if mode == "value_residual_mid" else 0
+            if self.layer_weights is not None:
+                layer_outputs: list[Tensor] = [x]
+            for i in range(self.num_encoder_layers):
+                if self.layer_weights is not None:
+                    w = F.softmax(self.layer_weights[i].to(dtype=x.dtype), dim=0)
+                    if w.ndim == 1:
+                        x = sum(w[j] * layer_outputs[j] for j in range(len(layer_outputs)))
+                    else:
+                        x = sum(w[j][None, None, :] * layer_outputs[j] for j in range(len(layer_outputs)))
+                ar = attn_cumsum if mode == "cumsum" else None
+                vr = v_res if is_vr and i > vr_capture_layer else None
+                need_v = is_vr and i == vr_capture_layer
+                if need_v:
+                    x, attn_out, v_res = self.blocks[i](x, x0, attn_residual=ar, v_residual=None, return_v=True)
+                else:
+                    x, attn_out = self.blocks[i](x, x0, attn_residual=ar, v_residual=vr)
+                if mode == "cumsum":
+                    attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
+                skips.append(x)
+                if self.layer_weights is not None:
+                    layer_outputs.append(x)
+            for i in range(self.num_decoder_layers):
+                if skips:
+                    x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+                layer_idx = self.num_encoder_layers + i
+                if self.layer_weights is not None:
+                    w = F.softmax(self.layer_weights[layer_idx].to(dtype=x.dtype), dim=0)
+                    if w.ndim == 1:
+                        x = sum(w[j] * layer_outputs[j] for j in range(len(layer_outputs)))
+                    else:
+                        x = sum(w[j][None, None, :] * layer_outputs[j] for j in range(len(layer_outputs)))
+                ar = attn_cumsum if mode == "cumsum" else None
+                vr = v_res if is_vr else None
+                x, attn_out = self.blocks[layer_idx](x, x0, attn_residual=ar, v_residual=vr)
+                if mode == "cumsum":
+                    attn_cumsum = attn_out if attn_cumsum is None else attn_cumsum + attn_out
+                if self.layer_weights is not None:
+                    layer_outputs.append(x)
 
         x = self.final_norm(x).reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
         if self.tie_embeddings:
-            logits_proj = F.linear(x, self.tok_emb.weight)
+            if self.embed_proj is not None:
+                # Factored tied output: model_dim→bottleneck→vocab
+                logits_proj = F.linear(x @ self.embed_proj.weight, self.tok_emb.weight)
+            else:
+                logits_proj = F.linear(x, self.tok_emb.weight)
         else:
             if self.lm_head is None:
                 raise RuntimeError("lm_head is required when tie_embeddings=False")
@@ -835,12 +1501,32 @@ def main() -> None:
         logit_softcap=args.logit_softcap,
         rope_base=args.rope_base,
         qk_gain_init=args.qk_gain_init,
+        attnres_mode=args.attnres_mode,
+        mlp_act=args.mlp_act,
+        act_power=args.act_power,
+        act_gate_floor=args.act_gate_floor,
+        embed_bottleneck=args.embed_bottleneck,
+        num_unique_blocks=args.num_unique_blocks,
+        num_cycles=args.num_cycles,
+        conv_kernel=args.conv_kernel,
+        num_experts=args.num_experts,
+        resid_scale_init=args.resid_scale_init,
+        stoch_depth_rate=args.stoch_depth_rate,
+        highway_net=args.highway_net,
+        skip_weight_init=args.skip_weight_init,
     ).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
             module.float()
     restore_low_dim_params_to_fp32(base_model)
-    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
+    # RTX 3090 (SM 8.6) has only 101376 bytes shared mem per block; the fused
+    # RMS norm backward kernel generated by torch.compile needs 102560 bytes,
+    # exceeding the hardware limit. Skip compile on SM < 8.9 (Ampere consumer).
+    _sm = torch.cuda.get_device_capability(device)
+    if _sm < (8, 9):
+        compiled_model = base_model  # eager mode — ~2.7× slower but works
+    else:
+        compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
     model: nn.Module = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
 
     # Optimizer split:
@@ -859,8 +1545,13 @@ def main() -> None:
         for name, p in block_named_params
         if p.ndim < 2 or any(pattern in name for pattern in CONTROL_TENSOR_NAME_PATTERNS)
     ]
+    if base_model.embed_proj is not None:
+        matrix_params.append(base_model.embed_proj.weight)
     if base_model.skip_weights.numel() > 0:
         scalar_params.append(base_model.skip_weights)
+    if base_model.layer_weights is not None:
+        for lw in base_model.layer_weights:
+            scalar_params.append(lw)
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
     optimizer_tok = torch.optim.Adam(
         [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}],
@@ -908,6 +1599,16 @@ def main() -> None:
         f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
     )
     log0(f"seed:{args.seed}")
+    if args.num_unique_blocks > 0:
+        log0(f"weight_sharing: unique_blocks={args.num_unique_blocks} cycles={args.num_cycles} effective_depth={args.num_unique_blocks * args.num_cycles}")
+    if args.embed_bottleneck > 0:
+        log0(f"factored_embed: bottleneck={args.embed_bottleneck}")
+    if args.conv_kernel > 0:
+        log0(f"depthwise_conv: kernel={args.conv_kernel}")
+    if args.num_experts > 0:
+        log0(f"soft_moe: num_experts={args.num_experts}")
+    if args.qat_start_frac > 0:
+        log0(f"qat: start_frac={args.qat_start_frac} start_step={int(args.iterations * args.qat_start_frac)}")
 
     # -----------------------------
     # DATA LOADER & MODEL WARMUP
@@ -961,15 +1662,54 @@ def main() -> None:
         train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
 
     # -----------------------------
+    # CHECKPOINT HELPERS
+    # -----------------------------
+
+    def save_checkpoint(step: int, training_time_ms: float) -> None:
+        if not master_process or args.checkpoint_every <= 0:
+            return
+        ckpt_dir = f"checkpoints/{args.run_id}"
+        os.makedirs(ckpt_dir, exist_ok=True)
+        torch.save({
+            "step": step,
+            "training_time_ms": training_time_ms,
+            "model": base_model.state_dict(),
+            "optimizers": [opt.state_dict() for opt in optimizers],
+            "stream_file_idx": train_loader.stream.file_idx,
+            "stream_pos": train_loader.stream.pos,
+        }, f"{ckpt_dir}/ckpt_{step}.pt")
+        log0(f"checkpoint saved: {ckpt_dir}/ckpt_{step}.pt")
+
+    # -----------------------------
+    # RESUME FROM CHECKPOINT
+    # -----------------------------
+
+    start_step = 0
+    training_time_ms = 0.0
+    if args.resume_from:
+        log0(f"resuming from {args.resume_from}")
+        ckpt = torch.load(args.resume_from, map_location=device)
+        base_model.load_state_dict(ckpt["model"], strict=True)
+        for opt, opt_state in zip(optimizers, ckpt["optimizers"], strict=True):
+            opt.load_state_dict(opt_state)
+        start_step = ckpt["step"]
+        training_time_ms = ckpt["training_time_ms"]
+        # Advance data loader to match checkpoint position
+        train_loader.stream.file_idx = ckpt["stream_file_idx"]
+        train_loader.stream.tokens = load_data_shard(train_loader.stream.files[ckpt["stream_file_idx"]])
+        train_loader.stream.pos = ckpt["stream_pos"]
+        log0(f"resumed at step {start_step}, training_time {training_time_ms:.0f}ms")
+        del ckpt
+
+    # -----------------------------
     # MAIN TRAINING LOOP
     # -----------------------------
 
-    training_time_ms = 0.0
     stop_after_step: int | None = None
     torch.cuda.synchronize()
     t0 = time.perf_counter()
 
-    step = 0
+    step = start_step
     while True:
         last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
 
@@ -993,6 +1733,8 @@ def main() -> None:
                 f"step:{step}/{args.iterations} val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} "
                 f"train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms / max(step, 1):.2f}ms"
             )
+            if args.checkpoint_every > 0 and step > 0 and step % args.checkpoint_every == 0:
+                save_checkpoint(step, training_time_ms)
             torch.cuda.synchronize()
             t0 = time.perf_counter()
 
@@ -1005,6 +1747,9 @@ def main() -> None:
             break
 
         elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+        # QAT: enable fake quantization after qat_start_frac of training
+        if args.qat_start_frac > 0 and step >= int(args.iterations * args.qat_start_frac):
+            CastedLinear.qat_enabled = True
         scale = lr_mul(step, elapsed_ms)
         zero_grad_all()
         train_loss = torch.zeros((), device=device)

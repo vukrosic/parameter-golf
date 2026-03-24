@@ -1,0 +1,11 @@
+{
+  "run_id": "s1_chat_cnn_frontend_331dfa_conv_7",
+  "steps": 1,
+  "elapsed_s": 0.26,
+  "train_loss": 6.9344,
+  "n_params": 17092168,
+  "arch": "Single conv layer, kernel=7",
+  "overrides": {
+    "conv_kernel": 7
+  }
+}

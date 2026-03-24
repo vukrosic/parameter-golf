@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "2000",
+    "MAX_WALLCLOCK_SECONDS": "7820",
+    "RUN_ID": "val_bn128_untied_s1337_2k",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-21T21:46:18+00:00",
+  "git": {
+    "commit": null,
+    "commit_short": null,
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "580.126.09",
+      "memory_total": "32607 MiB",
+      "name": "NVIDIA GeForce RTX 5090"
+    }
+  },
+  "log_path": "logs/val_bn128_untied_s1337_2k.txt",
+  "run_id": "val_bn128_untied_s1337_2k"
+}

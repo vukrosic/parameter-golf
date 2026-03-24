@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "p2_leaky05_gradfloor_500",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-21T05:28:33+00:00",
+  "git": {
+    "commit": "d6573a4b1e9f33bc87a6b15ec4a059b8a88f86c8",
+    "commit_short": "d6573a4",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.144",
+      "memory_total": "24576 MiB",
+      "name": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "log_path": "logs/p2_leaky05_gradfloor_500.txt",
+  "run_id": "p2_leaky05_gradfloor_500"
+}

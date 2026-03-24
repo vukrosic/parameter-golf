@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.66908404,
+    "val_loss": 2.81817849
+  },
+  "generated_at_utc": "2026-03-22T05:38:58+00:00",
+  "int8_zlib_model_bytes": 6907398,
+  "int8_zlib_total_submission_bytes": 6989051,
+  "last_eval": {
+    "max_steps": 200,
+    "step": 200,
+    "val_bpb": 1.6679,
+    "val_loss": 2.8161
+  },
+  "run_id": "scale_med_9L384_200"
+}

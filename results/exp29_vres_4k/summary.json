@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.35805556,
+    "val_loss": 2.29301993
+  },
+  "generated_at_utc": "2026-03-22T04:00:40+00:00",
+  "int8_zlib_model_bytes": 14272707,
+  "int8_zlib_total_submission_bytes": 14354360,
+  "last_eval": {
+    "max_steps": 4000,
+    "step": 4000,
+    "val_bpb": 1.3575,
+    "val_loss": 2.292
+  },
+  "run_id": "exp29_vres_4k"
+}

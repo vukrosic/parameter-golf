@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.60005129,
+    "val_loss": 2.70161957
+  },
+  "generated_at_utc": "2026-03-21T16:32:24+00:00",
+  "int8_zlib_model_bytes": 12373724,
+  "int8_zlib_total_submission_bytes": 12455377,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.5993,
+    "val_loss": 2.7004
+  },
+  "run_id": "arch_embed_bn64_leaky"
+}

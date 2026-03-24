@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.48283739,
+    "val_loss": 2.50370882
+  },
+  "generated_at_utc": "2026-03-19T18:45:51+00:00",
+  "int8_zlib_model_bytes": 10533048,
+  "int8_zlib_total_submission_bytes": 10593830,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.4745,
+    "val_loss": 2.4896
+  },
+  "run_id": "act14_power_relu_mildgate20_500"
+}

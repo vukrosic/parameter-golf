@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.37968609,
+    "val_loss": 2.32954216
+  },
+  "generated_at_utc": "2026-03-20T05:35:36+00:00",
+  "int8_zlib_model_bytes": 14590822,
+  "int8_zlib_total_submission_bytes": 14656301,
+  "last_eval": {
+    "max_steps": 1000,
+    "step": 1000,
+    "val_bpb": 1.3786,
+    "val_loss": 2.3277
+  },
+  "run_id": "act21_abs2_1000"
+}

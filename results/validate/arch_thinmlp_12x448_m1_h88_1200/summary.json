@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.38700642,
+    "val_loss": 2.34190224
+  },
+  "generated_at_utc": "2026-03-19T16:12:53+00:00",
+  "int8_zlib_model_bytes": 13389576,
+  "int8_zlib_total_submission_bytes": 13445769,
+  "last_eval": {
+    "max_steps": 1200,
+    "step": 1200,
+    "val_bpb": 1.3858,
+    "val_loss": 2.3399
+  },
+  "run_id": "arch_thinmlp_12x448_m1_h88_1200"
+}

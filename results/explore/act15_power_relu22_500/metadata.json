@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "act15_power_relu22_500",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-19T18:43:20+00:00",
+  "git": {
+    "commit": "9d58f1d072b414e2a696b9a05e85b94fc3be5234",
+    "commit_short": "9d58f1d",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/act15_power_relu22_500.txt",
+  "run_id": "act15_power_relu22_500"
+}

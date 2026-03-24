@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "p2_h3_gelu2",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-21T03:50:23+00:00",
+  "git": {
+    "commit": "b37d41ea634c5329bcc781ac51095a0cf8fe1df6",
+    "commit_short": "b37d41e",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.144",
+      "memory_total": "24576 MiB",
+      "name": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "log_path": "logs/p2_h3_gelu2.txt",
+  "run_id": "p2_h3_gelu2"
+}

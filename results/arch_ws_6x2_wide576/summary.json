@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.58660725,
+    "val_loss": 2.67891988
+  },
+  "generated_at_utc": "2026-03-21T15:46:03+00:00",
+  "int8_zlib_model_bytes": 11258478,
+  "int8_zlib_total_submission_bytes": 11340131,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.5861,
+    "val_loss": 2.678
+  },
+  "run_id": "arch_ws_6x2_wide576"
+}

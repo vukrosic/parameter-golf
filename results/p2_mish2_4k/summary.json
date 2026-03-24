@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.36500207,
+    "val_loss": 2.30474882
+  },
+  "generated_at_utc": "2026-03-21T11:18:58+00:00",
+  "int8_zlib_model_bytes": 15826982,
+  "int8_zlib_total_submission_bytes": 15904207,
+  "last_eval": {
+    "max_steps": 4000,
+    "step": 4000,
+    "val_bpb": 1.3614,
+    "val_loss": 2.2986
+  },
+  "run_id": "p2_mish2_4k"
+}

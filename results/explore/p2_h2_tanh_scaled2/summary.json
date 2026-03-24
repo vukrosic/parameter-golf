@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.48452972,
+    "val_loss": 2.50656625
+  },
+  "generated_at_utc": "2026-03-21T02:27:40+00:00",
+  "int8_zlib_model_bytes": 10955782,
+  "int8_zlib_total_submission_bytes": 11031468,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.4759,
+    "val_loss": 2.4921
+  },
+  "run_id": "p2_h2_tanh_scaled2"
+}

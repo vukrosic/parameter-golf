@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.89757056,
+    "val_loss": 3.2039684
+  },
+  "generated_at_utc": "2026-03-22T10:19:02+00:00",
+  "int8_zlib_model_bytes": 771283,
+  "int8_zlib_total_submission_bytes": 855747,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.8973,
+    "val_loss": 3.2036
+  },
+  "run_id": "micro_nano_baseline"
+}

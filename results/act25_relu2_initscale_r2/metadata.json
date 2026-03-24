@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "1300",
+    "MAX_WALLCLOCK_SECONDS": "5083",
+    "RUN_ID": "act25_relu2_initscale_r2",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-20T11:43:08+00:00",
+  "git": {
+    "commit": "7f8469c4dc17b035a6648d74ff975aaa725e22b6",
+    "commit_short": "7f8469c",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/act25_relu2_initscale_r2.txt",
+  "run_id": "act25_relu2_initscale_r2"
+}

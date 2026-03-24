@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1955",
+    "RUN_ID": "act18_sharper_softplus2_500",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-20T04:28:36+00:00",
+  "git": {
+    "commit": "c3f92d9d48bc0287b9885f5a721fd882a3331ac0",
+    "commit_short": "c3f92d9",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/act18_sharper_softplus2_500.txt",
+  "run_id": "act18_sharper_softplus2_500"
+}

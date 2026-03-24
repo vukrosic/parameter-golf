@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "4000",
+    "MAX_WALLCLOCK_SECONDS": "15640",
+    "RUN_ID": "val_moe4e_s1337_4k",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-21T20:07:37+00:00",
+  "git": {
+    "commit": "876a408d9d7be8bc02b9521e997814008f5ef307",
+    "commit_short": "876a408",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "580.126.09",
+      "memory_total": "32607 MiB",
+      "name": "NVIDIA GeForce RTX 5090"
+    }
+  },
+  "log_path": "logs/val_moe4e_s1337_4k.txt",
+  "run_id": "val_moe4e_s1337_4k"
+}

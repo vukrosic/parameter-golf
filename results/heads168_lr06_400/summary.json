@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.52041455,
+    "val_loss": 2.56715628
+  },
+  "generated_at_utc": "2026-03-19T14:24:10+00:00",
+  "int8_zlib_model_bytes": 9918216,
+  "int8_zlib_total_submission_bytes": 9972538,
+  "last_eval": {
+    "max_steps": 400,
+    "step": 400,
+    "val_bpb": 1.51,
+    "val_loss": 2.5496
+  },
+  "run_id": "heads168_lr06_400"
+}

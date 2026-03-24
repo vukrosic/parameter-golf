@@ -1,0 +1,11 @@
+{
+  "run_id": "s1_chat_residual_connection_techniques_bc1e41_value_residual_attention",
+  "steps": 1,
+  "elapsed_s": 0.24,
+  "train_loss": 6.9399,
+  "n_params": 17059912,
+  "arch": "Enable value residual attention mode",
+  "overrides": {
+    "attnres_mode": "value_residual"
+  }
+}

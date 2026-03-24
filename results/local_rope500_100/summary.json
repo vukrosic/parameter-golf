@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 2.18570569,
+    "val_loss": 3.69047251
+  },
+  "generated_at_utc": "2026-03-22T09:18:25+00:00",
+  "int8_zlib_model_bytes": 2680176,
+  "int8_zlib_total_submission_bytes": 2764640,
+  "last_eval": {
+    "max_steps": 100,
+    "step": 100,
+    "val_bpb": 2.1857,
+    "val_loss": 3.6905
+  },
+  "run_id": "local_rope500_100"
+}

@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.48408061,
+    "val_loss": 2.50580795
+  },
+  "generated_at_utc": "2026-03-20T04:45:00+00:00",
+  "int8_zlib_model_bytes": 13128211,
+  "int8_zlib_total_submission_bytes": 13193690,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.4834,
+    "val_loss": 2.5046
+  },
+  "run_id": "act19_threshold2_500"
+}

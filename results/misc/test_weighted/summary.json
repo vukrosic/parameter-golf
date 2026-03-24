@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 4.10156583,
+    "val_loss": 6.9253221
+  },
+  "generated_at_utc": "2026-03-19T14:24:12+00:00",
+  "int8_zlib_model_bytes": 4947698,
+  "int8_zlib_total_submission_bytes": 5002020,
+  "last_eval": {
+    "max_steps": 2,
+    "step": 2,
+    "val_bpb": 4.0989,
+    "val_loss": 6.9207
+  },
+  "run_id": "test_weighted"
+}

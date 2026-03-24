@@ -1,0 +1,31 @@
+{
+  "run_id": "p2_leaky05_gradfloor_2k",
+  "status": "IN_PROGRESS",
+  "snapshot_time_utc": "2026-03-21T06:30:00+00:00",
+  "config": {"MLP_ACT": "leaky05_gradfloor", "max_steps": 2000, "SEED": 1337},
+  "step_avg_ms": 2583,
+  "last_step_reached": 1020,
+  "val_checkpoints": [
+    {"step": 50,   "val_bpb": 2.3909},
+    {"step": 100,  "val_bpb": 2.0072},
+    {"step": 150,  "val_bpb": 1.8336},
+    {"step": 200,  "val_bpb": 1.7282},
+    {"step": 250,  "val_bpb": 1.6535},
+    {"step": 300,  "val_bpb": 1.5966},
+    {"step": 350,  "val_bpb": 1.5607},
+    {"step": 400,  "val_bpb": 1.5361},
+    {"step": 450,  "val_bpb": 1.5106},
+    {"step": 500,  "val_bpb": 1.4917},
+    {"step": 550,  "val_bpb": 1.4765},
+    {"step": 600,  "val_bpb": 1.4611},
+    {"step": 650,  "val_bpb": 1.4489},
+    {"step": 700,  "val_bpb": 1.4349},
+    {"step": 750,  "val_bpb": 1.4275},
+    {"step": 800,  "val_bpb": 1.4192},
+    {"step": 850,  "val_bpb": 1.4106},
+    {"step": 900,  "val_bpb": 1.4037},
+    {"step": 950,  "val_bpb": 1.3974},
+    {"step": 1000, "val_bpb": 1.3904}
+  ],
+  "notes": "Combining H3 (leaky 0.5) + H1 (gradfloor). Best activation tested. Needs re-run on faster hardware to complete 2k and then 13k."
+}

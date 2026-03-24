@@ -1,0 +1,17 @@
+{
+  "run_id": "s1_chat_activation_compare_79bcdc_leaky05_safe",
+  "steps": 1,
+  "elapsed_s": 0.38,
+  "train_loss": 6.9315,
+  "n_params": 15200822,
+  "arch": "\u26a1 Activation Function: leaky05, \ud83e\udde0 Mixture of Experts: moe4_d384, \ud83d\udcdd Embedding Strategy: untied_bn128",
+  "overrides": {
+    "mlp_act": "leaky_relu2_05",
+    "num_experts": 4,
+    "model_dim": 384,
+    "num_heads": 6,
+    "num_kv_heads": 3,
+    "embed_bottleneck": 128,
+    "tie_embeddings": false
+  }
+}

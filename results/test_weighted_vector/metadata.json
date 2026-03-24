@@ -1,0 +1,19 @@
+{
+  "config": {},
+  "generated_at_utc": "2026-03-19T14:24:12+00:00",
+  "git": {
+    "commit": "99d69e9a5161f9f01742c3df1f45d6b3ee8ee9bc",
+    "commit_short": "99d69e9",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "580.105.08",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "results/test_weighted_vector/train.log",
+  "run_id": "test_weighted_vector"
+}

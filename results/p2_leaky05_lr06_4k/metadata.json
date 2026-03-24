@@ -1,0 +1,27 @@
+{
+  "config": {
+    "ITERATIONS": "4000",
+    "MATRIX_LR": "0.06",
+    "MAX_WALLCLOCK_SECONDS": "15640",
+    "RUN_ID": "p2_leaky05_lr06_4k",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-21T16:47:20+00:00",
+  "git": {
+    "commit": "f680d366f8f8d08d86ff02b2b1687bf6606b46f4",
+    "commit_short": "f680d36",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "580.126.09",
+      "memory_total": "32607 MiB",
+      "name": "NVIDIA GeForce RTX 5090"
+    }
+  },
+  "log_path": "logs/p2_leaky05_lr06_4k.txt",
+  "run_id": "p2_leaky05_lr06_4k"
+}

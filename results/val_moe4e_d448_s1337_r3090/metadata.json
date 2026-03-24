@@ -1,0 +1,29 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1875",
+    "MODEL_DIM": "448",
+    "NUM_HEADS": "8",
+    "NUM_KV_HEADS": "4",
+    "RUN_ID": "val_moe4e_d448_s1337_r3090",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-22T02:30:00+00:00",
+  "git": {
+    "commit": "929062c75d87f95147d3ef72a3271ee222370678",
+    "commit_short": "929062c",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "575.57.08",
+      "memory_total": "24576 MiB",
+      "name": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "log_path": "logs/val_moe4e_d448_s1337_r3090.txt",
+  "run_id": "val_moe4e_d448_s1337_r3090"
+}

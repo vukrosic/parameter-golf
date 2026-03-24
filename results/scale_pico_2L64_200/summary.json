@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 2.24047351,
+    "val_loss": 3.78294567
+  },
+  "generated_at_utc": "2026-03-22T05:47:01+00:00",
+  "int8_zlib_model_bytes": 212084,
+  "int8_zlib_total_submission_bytes": 293737,
+  "last_eval": {
+    "max_steps": 200,
+    "step": 200,
+    "val_bpb": 2.2405,
+    "val_loss": 3.7829
+  },
+  "run_id": "scale_pico_2L64_200"
+}

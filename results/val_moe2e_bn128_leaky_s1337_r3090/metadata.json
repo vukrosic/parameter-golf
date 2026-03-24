@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "500",
+    "MAX_WALLCLOCK_SECONDS": "1875",
+    "RUN_ID": "val_moe2e_bn128_leaky_s1337_r3090",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-22T03:28:52+00:00",
+  "git": {
+    "commit": "10546d091b5deb782413bc0d554b805a61c8124b",
+    "commit_short": "10546d0",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "575.57.08",
+      "memory_total": "24576 MiB",
+      "name": "NVIDIA GeForce RTX 3090"
+    }
+  },
+  "log_path": "logs/val_moe2e_bn128_leaky_s1337_r3090.txt",
+  "run_id": "val_moe2e_bn128_leaky_s1337_r3090"
+}

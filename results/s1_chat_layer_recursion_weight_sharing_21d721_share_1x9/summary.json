@@ -1,0 +1,12 @@
+{
+  "run_id": "s1_chat_layer_recursion_weight_sharing_21d721_share_1x9",
+  "steps": 1,
+  "elapsed_s": 0.23,
+  "train_loss": 6.9394,
+  "n_params": 2361352,
+  "arch": "1 unique block, 9 cycles (9L total) - extreme weight sharing",
+  "overrides": {
+    "num_unique_blocks": 1,
+    "num_cycles": 9
+  }
+}

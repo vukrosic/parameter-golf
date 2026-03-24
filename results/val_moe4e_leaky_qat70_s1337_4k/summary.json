@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.25074073,
+    "val_loss": 2.11182333
+  },
+  "generated_at_utc": "2026-03-21T20:10:44+00:00",
+  "int8_zlib_model_bytes": 24658295,
+  "int8_zlib_total_submission_bytes": 24739948,
+  "last_eval": {
+    "max_steps": 4000,
+    "step": 4000,
+    "val_bpb": 1.2477,
+    "val_loss": 2.1066
+  },
+  "run_id": "val_moe4e_leaky_qat70_s1337_4k"
+}

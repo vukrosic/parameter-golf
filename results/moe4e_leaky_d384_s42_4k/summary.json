@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.36326643,
+    "val_loss": 2.30181827
+  },
+  "generated_at_utc": "2026-03-21T23:59:54+00:00",
+  "int8_zlib_model_bytes": 14090796,
+  "int8_zlib_total_submission_bytes": 14172449,
+  "last_eval": {
+    "max_steps": 4000,
+    "step": 4000,
+    "val_bpb": 1.3602,
+    "val_loss": 2.2966
+  },
+  "run_id": "moe4e_leaky_d384_s42_4k"
+}

@@ -1,0 +1,26 @@
+{
+  "config": {
+    "ITERATIONS": "4000",
+    "MAX_WALLCLOCK_SECONDS": "15640",
+    "RUN_ID": "act26_leaky03_4000",
+    "SEED": "1337",
+    "TRAIN_LOG_EVERY": "10",
+    "VAL_LOSS_EVERY": "50"
+  },
+  "generated_at_utc": "2026-03-20T14:07:16+00:00",
+  "git": {
+    "commit": "6c26316541d83f85e71af4023b6fb67040d70de6",
+    "commit_short": "6c26316",
+    "dirty_worktree": true
+  },
+  "hardware": {
+    "gpu": {
+      "detected": true,
+      "driver_version": "570.124.06",
+      "memory_total": "46068 MiB",
+      "name": "NVIDIA L40S"
+    }
+  },
+  "log_path": "logs/act26_leaky03_4000.txt",
+  "run_id": "act26_leaky03_4000"
+}

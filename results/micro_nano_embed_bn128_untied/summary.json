@@ -1,0 +1,16 @@
+{
+  "final_quant_eval": {
+    "val_bpb": 1.86177606,
+    "val_loss": 3.14353089
+  },
+  "generated_at_utc": "2026-03-22T10:23:34+00:00",
+  "int8_zlib_model_bytes": 902351,
+  "int8_zlib_total_submission_bytes": 986815,
+  "last_eval": {
+    "max_steps": 500,
+    "step": 500,
+    "val_bpb": 1.8615,
+    "val_loss": 3.1431
+  },
+  "run_id": "micro_nano_embed_bn128_untied"
+}

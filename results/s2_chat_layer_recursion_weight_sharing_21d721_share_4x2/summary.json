@@ -1,0 +1,12 @@
+{
+  "run_id": "s2_chat_layer_recursion_weight_sharing_21d721_share_4x2",
+  "steps": 2,
+  "elapsed_s": 0.42,
+  "train_loss": 7.7411,
+  "n_params": 7872544,
+  "arch": "4 unique blocks, 2 cycles (8L total) - light weight sharing",
+  "overrides": {
+    "num_unique_blocks": 4,
+    "num_cycles": 2
+  }
+}
