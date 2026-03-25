@@ -80,7 +80,7 @@ Goal: Get 10 paying Skool members using it within 4 weeks.
 ### Infrastructure
 - [ ] Single VPS (Hetzner/Railway) for API + frontend
 - [ ] GPUs stay as-is (SSH fleet from parameter-golf)
-- [ ] Cron job to sync results every 2 hours (reuse gpu_sync_cron.sh)
+- [ ] Cron job to sync results every 2 hours (reuse the old results-sync logic)
 - [ ] Basic rate limiting and auth middleware
 
 ### NOT in MVP

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +13,6 @@ ROOT = Path(__file__).resolve().parents[1]
 RESEARCH_ROOT = ROOT / "research"
 SPECS_ROOT = ROOT / "experiments" / "specs"
 RESULTS_ROOT = ROOT / "results"
-QUEUE_FILE = ROOT / "queues" / "active.txt"
 VALID_DOC_TYPES = ("explorations", "hypotheses", "findings")
 
 
@@ -154,48 +152,8 @@ def running_runs() -> list[dict]:
 
 
 def queued_runs() -> list[dict]:
-    if not QUEUE_FILE.exists():
-        return []
-    runs: list[dict] = []
-    try:
-        lines = QUEUE_FILE.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
-
-    for raw in lines:
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = shlex.split(line)
-        if len(parts) < 2:
-            continue
-        name = parts[0]
-        try:
-            steps = int(parts[1])
-        except ValueError:
-            continue
-        overrides = {}
-        for part in parts[2:]:
-            if "=" in part:
-                key, value = part.split("=", 1)
-                overrides[key] = value
-        runs.append({
-            "id": name,
-            "name": name,
-            "status": "queued",
-            "stage": classify_stage(steps),
-            "lane": infer_lane(name),
-            "steps": steps,
-            "current_step": 0,
-            "val_bpb": None,
-            "queued_at": QUEUE_FILE.stat().st_mtime,
-            "started_at": None,
-            "completed_at": None,
-            "gpu_name": None,
-            "config_overrides": overrides,
-            "readonly": True,
-        })
-    return runs
+    # Repo-local queue ownership was retired from parameter-golf.
+    return []
 
 
 def completed_runs() -> list[dict]:

@@ -1,9 +1,0 @@
-{
-  "run_id": "s2_chat_residual_connection_techniques_bc1e41_baseline",
-  "steps": 2,
-  "elapsed_s": 0.49,
-  "train_loss": 7.4358,
-  "n_params": 17059912,
-  "arch": "Control \u2014 no changes.",
-  "overrides": {}
-}

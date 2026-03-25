@@ -68,5 +68,5 @@ Always written to `results/tiered_screen_<topic>_<date>.md`. Contains:
 
 1. If user has candidates in mind: write `screens/<topic>.py` with them, run the screen.
 2. If user wants Claude to pick: choose from KNOWLEDGE.md proven facts + prior screen finalists. Prefer changes with clear architectural motivation over LR tuning.
-3. After the run: read the report, summarize finalists in plain language, recommend whether to promote to a 500-step explore queue or run another screen with a different direction.
+3. After the run: read the report, summarize finalists in plain language, recommend whether to promote to a 500-step explore run or run another screen with a different direction.
 4. Move finished screen file to `screens/archive/<topic>.py`.

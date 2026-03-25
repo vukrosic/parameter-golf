@@ -534,15 +534,15 @@ All three leaky variants beat relu² (probability of all three by chance: ~12.5%
 
 ## What is still uncertain
 
-1. **Whether `leaky(0.5)²` holds at 13k steps.** Running now (2 seeds on GPUs 2-3). The ~0.003 advantage is consistent through 6k steps but has never been tested at submission length. This is the single most important experiment.
+1. **Whether `leaky(0.5)²` holds at 13k steps.** The ~0.003 advantage is consistent through 6k steps but has never been tested at submission length. This is the single most important validation.
 
-2. **Whether gradfloor stacks with leaky.** `leaky(0.5)²_gradfloor` is running now (500-step on GPU 0, 2k on GPU 1). If this shows improvement, it jumps to the front of the 13k queue. Gradfloor gave +0.009 on relu² — if even half of that stacks with leaky, it's a bigger gain than the leaky advantage itself.
+2. **Whether gradfloor stacks with leaky.** `leaky(0.5)²_gradfloor` still needs screening and follow-up validation. If it shows improvement, it becomes the highest-priority 13k follow-up. Gradfloor gave +0.009 on relu² — if even half of that stacks with leaky, it's a bigger gain than the leaky advantage itself.
 
-3. **Whether leaky(0.8)² is genuinely better than leaky(0.5)².** It leads at 500 steps by 0.011 BPB — but recall that abs² led by a similar margin at 500 steps and lost it by 5k. Queued for 4k validation.
+3. **Whether leaky(0.8)² is genuinely better than leaky(0.5)².** It leads at 500 steps by 0.011 BPB — but recall that abs² led by a similar margin at 500 steps and lost it by 5k. It needs 4k validation.
 
 4. **The H2/H1 entanglement.** We cannot cleanly separate "compression hurts" from "gradient saturation hurts." The defense argues log1p_relu² (unbounded, no gradient saturation, but sublinear growth, hurts by +0.007) and clamped16 (bounded, some gradient death, but *helps* by -0.008) show H2 has an independent component. The critique argues both could be explained by gradient dynamics alone. Verdict: both sides have a point. H2 is probably *partially* independent of H1, but the entanglement is real and the document should not present them as cleanly separate. **This is a theoretical question, not a submission-blocking one.**
 
-5. **Whether H3 is real or noise.** The critique is right that individual leaky vs relu² comparisons are at the noise floor. The defense is right that 6+ independent activations all beating relu² is unlikely by chance. The 13k runs (currently executing) will settle this — if both seeds show leaky beating the relu² 13k baseline (1.2498 post-quant), H3 is real. If one or both don't, H3 is noise and relu² is the answer.
+5. **Whether H3 is real or noise.** The critique is right that individual leaky vs relu² comparisons are at the noise floor. The defense is right that 6+ independent activations all beating relu² is unlikely by chance. Proper 13k validation will settle this — if both seeds show leaky beating the relu² 13k baseline (1.2498 post-quant), H3 is real. If one or both don't, H3 is noise and relu² is the answer.
 
 ---
 
@@ -554,13 +554,13 @@ A critique and defense were written (see `critique_activation_findings.md` and `
 
 | Point | Action taken |
 |---|---|
-| Gradfloor is underemphasized | Moved to #1 priority, running at 500/2k/4k/6k/13k |
+| Gradfloor is underemphasized | Moved to top priority; needs 500/2k/4k/6k/13k follow-up |
 | H2 may not be independent of H1 | Acknowledged — noted as entangled, not separate law |
 | Too many exploratory 500-step experiments | Cut 8 experiments that test already-failed activations (x_absx 2k/4k/6k, gelu2 2k/4k, linneg05 2k/4k, bipolar rerun) |
 | Not enough full-length validation | Added 13k runs for gradfloor+leaky, 4k/6k for leaky08 and clamped16 |
 | RESULTS.md contradicts findings | Will add supersession note |
 | "Squaring helps" stated too broadly | Only directly tested for relu and silu; other bases are inferential |
-| relu^2.2 result is confounded | Controlled re-run executing now (GPU 5) |
+| relu^2.2 result is confounded | Controlled re-run still needed |
 
 ### Rejected from critique
 
@@ -608,26 +608,18 @@ A critique and defense were written (see `critique_activation_findings.md` and `
 
 | Candidate | Best BPB | Steps tested to | Status | Potential |
 |---|---:|---:|---|---|
-| leaky(0.5)²_gradfloor | *untested* | running 500/2k | **Testing now** | Highest — could stack +0.009 + 0.003 = +0.012 |
-| leaky(0.5)² | 1.2708 post-quant | 6000 | **13k running** | Solid — consistent +0.003 over relu² |
-| relu²_gradfloor | 1.4746 post-quant | 500 | Queued 4k | Good — +0.009 over relu² at 500 |
-| leaky(0.8)² | 1.4635 post-quant | 500 | Queued 4k | Unknown — 500-step lead could be artifact |
+| leaky(0.5)²_gradfloor | *untested* | pending 500/2k | **Needs screening** | Highest — could stack +0.009 + 0.003 = +0.012 |
+| leaky(0.5)² | 1.2708 post-quant | 6000 | **Needs 13k validation** | Solid — consistent +0.003 over relu² |
+| relu²_gradfloor | 1.4746 post-quant | 500 | Needs 4k validation | Good — +0.009 over relu² at 500 |
+| leaky(0.8)² | 1.4635 post-quant | 500 | Needs 4k validation | Unknown — 500-step lead could be artifact |
 | relu² | 1.2498 post-quant | 13000 | **Baseline** | Known quantity |
 
-**Experiments currently running (8 GPUs):**
+**Recommended validation order:**
 
-| GPU | Experiment | Steps | ETA | Purpose |
-|---:|---|---:|---|---|
-| 0 | leaky(0.5)²_gradfloor | 500 | ~25 min | Screen novel combination |
-| 1 | leaky(0.5)²_gradfloor | 2000 | ~110 min | Validate if 500 looks good |
-| 2 | leaky(0.5)² seed 42 | 13780 | ~7.5 hrs | **Submission decision** | [i'm not so sure if you need both seeds, let's first test one and see the difference to the baseline]
-| 3 | leaky(0.5)² seed 1337 | 13780 | ~7.5 hrs | **Submission decision** |
-| 4 | relu^1.8 | 500 | ~25 min | Exponent sweep |
-| 5 | relu^2.2 | 500 | ~25 min | Resolve confounded earlier result |
-| 6 | x_silu | 500 | ~25 min | Cross-hypothesis |
-| 7 | x_tanh | 500 | ~25 min | Cross-hypothesis |
-
-**After GPUs 0, 4-7 free (~30 min):** They pick up tier 1-2 from the queue: leaky05_gradfloor 13k (2 seeds), leaky05_gradfloor 4k, leaky08 4k, clamped16 4k, gradfloor_relu2 4k.
+1. Run `leaky(0.5)²` at 13k, preferably with 2 seeds.
+2. Screen `leaky(0.5)²_gradfloor` at 500, then validate at 2k and 13k if it still leads.
+3. Validate `leaky(0.8)²` and `relu²_gradfloor` at 4k.
+4. Treat exponent-sweep and cross-hypothesis activations as secondary until the submission-critical validations are done.
 
 **Decision tree:**
 

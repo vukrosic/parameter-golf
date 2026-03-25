@@ -17,8 +17,8 @@ All measurements use the default 9-layer / 512-dim / 8-head / 4-KV-head setup wi
 | GPU | VRAM | Step avg (ms) | 500 steps | 13,780 steps | Source | Date |
 |-----|------|--------------|-----------|-------------|--------|------|
 | 8xH100 (8 GPUs) | 80GB×8 | ~43 | ~22s | 600s (10 min) | — | — |
-| 1xRTX 5090 (Novita) | 32GB | ~605 | ~5 min | ~2.3 hrs | queue_gpu4.txt runs | 2026-03-21 |
-| 1xLegacy L40S (Novita, torch.compile) | 48GB | ~950 | ~8 min | ~3.6 hrs | queue_gpu3.txt runs | 2026-03-21 |
+| 1xRTX 5090 (Novita) | 32GB | ~605 | ~5 min | ~2.3 hrs | remote benchmark runs | 2026-03-21 |
+| 1xLegacy L40S (Novita, torch.compile) | 48GB | ~950 | ~8 min | ~3.6 hrs | remote benchmark runs | 2026-03-21 |
 | 1xLegacy L40S (old measurement) | 48GB | ~2,294-2,487 | ~19-21 min | ~8.8-9.5 hrs | monitor_status.log (multiple runs) | 2026-03-19 |
 | 1xRTX 3090 (local) | 24GB | ~2,629 | ~22 min | ~10.1 hrs | local smoke + activation runs | 2026-03-21 |
 | 1xRTX 3090 (remote, Novita) | 24GB | ~2,702 | ~23 min | ~10.3 hrs | remote activation runs | 2026-03-21 |
@@ -103,4 +103,3 @@ When training LLMs, BF16 and FP8 are the most relevant precisions. The legacy L4
 - Per-step dynamics (loss curves, gradients) are identical across GPUs — only wall-clock differs.
 - RTX 3090 runs in eager mode (torch.compile disabled, SM 8.6). Legacy L40S (SM 8.9) and RTX 5090 (SM 12.0) use torch.compile.
 - All remote GPUs are Novita cloud instances (proxy.us-ca-6.gpu-instance.novita.ai).
-- Active GPU fleet (as of 2026-03-21): 1x local 3090, 1x remote 3090 (:62248), 1x RTX 5090 (:62132).

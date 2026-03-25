@@ -33,7 +33,7 @@ fi
 WALLCLOCK=$(python3 -c "import math; print(math.ceil($MAX_STEPS * $GPU_TIMING_PER_STEP * 1.15))")
 
 # Standardized settings for reproducible comparisons.
-# Allow queue entries to pre-set a shorter wallclock or iteration budget for fast probes.
+# Allow callers to pre-set a shorter wallclock or iteration budget for fast probes.
 export RUN_ID="${NAME}"
 export ITERATIONS="${ITERATIONS:-$MAX_STEPS}"
 export MAX_WALLCLOCK_SECONDS="${MAX_WALLCLOCK_SECONDS:-$WALLCLOCK}"

@@ -1,9 +1,0 @@
-{
-  "run_id": "s2_chat_cnn_frontend_331dfa_baseline",
-  "steps": 2,
-  "elapsed_s": 0.47,
-  "train_loss": 7.4974,
-  "n_params": 17059912,
-  "arch": "Control \u2014 no changes.",
-  "overrides": {}
-}

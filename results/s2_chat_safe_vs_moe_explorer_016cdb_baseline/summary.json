@@ -1,9 +1,0 @@
-{
-  "run_id": "s2_chat_safe_vs_moe_explorer_016cdb_baseline",
-  "steps": 2,
-  "elapsed_s": 0.47,
-  "train_loss": 7.438,
-  "n_params": 17059912,
-  "arch": "Control \u2014 all defaults.",
-  "overrides": {}
-}

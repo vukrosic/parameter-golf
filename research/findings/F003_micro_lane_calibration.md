@@ -82,9 +82,8 @@ Paste the `research/compare_micro_lane.py` output here after wave 0.
 
 ## Reproducibility
 
-- **Queue:** `queues/micro_wave0_calibration.txt`
 - **Comparison script:** `research/compare_micro_lane.py`
 - **Configs:** runner profiles `nano_3L128` and `micro_5L192`
 - **Commit:** <fill after running>
 - **Hardware:** <fill after running>
-- **How to rerun:** `bash infra/run_queue.sh queues/micro_wave0_calibration.txt`
+- **Historical note:** the original repo-local queue artifact for this calibration was removed when manual orchestration was retired from `parameter-golf`
