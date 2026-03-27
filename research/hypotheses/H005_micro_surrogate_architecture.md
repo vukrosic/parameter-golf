@@ -25,7 +25,7 @@ More specifically:
 
 ## Prior Evidence
 
-- The repo previously contained a dormant reduced-scale sweep before the manual queue workflow was retired.
+- The repo previously contained a dormant reduced-scale sweep.
 - Existing 200-step results show `pico` and `ultra` are below the fidelity floor, while `nano` and `micro` are still viable LLMs.
 - Architecture findings already establish strong controls:
   - positives: untied bn128 embeddings, `moe_2e`, `moe_4e`

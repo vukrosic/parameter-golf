@@ -152,7 +152,7 @@ def running_runs() -> list[dict]:
 
 
 def queued_runs() -> list[dict]:
-    # Repo-local queue ownership was retired from parameter-golf.
+    # Runtime queue state belongs to autoresearch snapshot records, not this repo.
     return []
 
 
@@ -286,7 +286,6 @@ def list_specs() -> list[dict]:
             "linked_docs": payload.get("linked_docs", []),
             "tags": payload.get("tags", []),
             "notes": payload.get("notes", ""),
-            "desired_state": payload.get("desired_state", "draft"),
             "source_path": str(path),
             "origin": "repo",
             "updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
@@ -322,7 +321,6 @@ def get_spec(slug: str) -> dict:
         "linked_docs": payload.get("linked_docs", []),
         "tags": payload.get("tags", []),
         "notes": payload.get("notes", ""),
-        "desired_state": payload.get("desired_state", "draft"),
         "source_path": str(path),
         "origin": "repo",
         "updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),

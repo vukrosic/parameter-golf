@@ -1,46 +1,27 @@
-# Parameter Golf Repo Scope
+# Parameter Golf — Project Plan
 
-Parameter Golf is now the code-and-evidence repo for the challenge work. The old repo-local queue, fleet, and debate workflow has been retired from this directory.
+## Goal
 
-What stays here:
+Win the OpenAI Parameter Golf Challenge: best 16MB language model, trained in under 10 minutes on 8xH100s.
 
-- training code (`train_gpt.py`, `train_gpt_mlx.py`)
-- local run helpers (`infra/run_experiment.sh`, `infra/tiered_screen.py`)
-- experiment specs in `experiments/specs/`
-- research notes and findings in `research/`
-- leaderboard records in `records/`
+**Metric**: `val_bpb` (lower is better)
+**Current best**: See `KNOWLEDGE.md` for latest frontier
+**Leaderboard baseline**: 1.2244 BPB
 
-What no longer lives here:
+## Research Methodology
 
-- repo-local execution queues
-- repo-local GPU fleet control
-- repo-local debate and wave automation
+See `autoresearch/` for how to run structured research in this repo:
+- `autoresearch/README.md` — system overview and repo map
+- `autoresearch/RESEARCH_LOOP.md` — mechanical steps of a research cycle
+- `autoresearch/PROMPTS.md` — ready-to-use prompts for agent sessions
 
-This repo should be treated as:
+## Current Status
 
-1. the source tree for model code and configs
-2. the place where research claims and evidence are written down
-3. a dependency that external orchestration can read or copy
+See `KNOWLEDGE.md` for proven facts and latest results.
 
 ## Working Model
 
-- use `infra/run_experiment.sh` for direct local runs
-- use `infra/tiered_screen.py` for cheap local multi-candidate screens
-- record conclusions in `KNOWLEDGE.md` and `research/`
-- keep orchestration state outside this repo
-
-## Directory Map
-
-```text
-train_gpt.py
-infra/run_experiment.sh
-infra/tiered_screen.py
-experiments/specs/
-research/
-records/
-results/
-```
-
-## Rule
-
-If a file in this repo assumes local queues, local dispatch, or repo-owned fleet state, it is stale and should be removed or rewritten.
+1. Edit code here in `/root/parameter-golf/`
+2. Rsync to GPU, run experiments
+3. Pull results back to `results/`
+4. Analyze, update `KNOWLEDGE.md`, design next batch

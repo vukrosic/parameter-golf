@@ -4,7 +4,6 @@
     "NUM_KV_HEADS_RULE": "half",
     "RUN_GROUP": "head_count_sweep_v1"
   },
-  "desired_state": "draft",
   "linked_docs": [
     "explorations/2026-03-22_head_count_sweep.md"
   ],

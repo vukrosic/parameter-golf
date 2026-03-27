@@ -17,7 +17,6 @@
     "TRAIN_SEQ_LEN": "1024",
     "WARMDOWN_ITERS": "44"
   },
-  "desired_state": "draft",
   "lane": "micro_explore",
   "linked_docs": [
     "hypotheses/H005_micro_surrogate_architecture.md",

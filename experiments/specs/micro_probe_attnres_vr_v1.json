@@ -20,7 +20,6 @@
     "TIE_EMBEDDINGS": "1",
     "ATTNRES_MODE": "value_residual"
   },
-  "desired_state": "queued",
   "lane": "micro_explore",
   "linked_docs": [
     "hypotheses/H005_micro_surrogate_architecture.md",

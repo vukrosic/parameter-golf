@@ -8,10 +8,10 @@ This repo now holds:
 
 - competition training code
 - local experiment helpers
-- research notes, findings, and screen configs
+- experiment specs, research notes, findings, and screen configs
 - archived leaderboard submissions in `records/`
 
-The old repo-local queue, fleet, debate, and GPU orchestration workflow has been retired. This repo is no longer the place to manage dispatch state.
+Research methodology docs live in `autoresearch/` inside this repo.
 
 ## Quick Setup
 
@@ -64,4 +64,4 @@ Key outputs:
 - read `KNOWLEDGE.md` before proposing new work
 - `infra/FORBIDDEN.md` defines the research constraints
 - experiment names use snake_case
-- local manual orchestration has been removed from this repo; keep this repo focused on code and evidence
+- keep this repo focused on code, experiment definitions, and evidence

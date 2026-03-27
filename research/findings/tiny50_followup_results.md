@@ -58,7 +58,7 @@ Artifacts for every run are stored in `results/u*/summary.json` and `results/u*/
 
 | Family | Best run | Best val_bpb | Family average | Read |
 |--------|----------|--------------|----------------|------|
-| Controls / recentering | `u04_conv3_ctrl` | 1.8141 | 1.8537 | `conv3` was the strongest clean single change in the follow-up queue. |
+| Controls / recentering | `u04_conv3_ctrl` | 1.8141 | 1.8537 | `conv3` was the strongest clean single change in the follow-up batch. |
 | T90 family: silu + stabilizers | `u12_8L_vr_silu` | 1.7889 | 1.8463 | The original `vr+silu` idea only became dominant again once depth was added. |
 | ReLU crossovers | `u25_8L_vr_relu` | 1.7960 | 1.8581 | ReLU became excellent when paired with both depth and value residual. |
 | EBN size ablations | `u35_ebn64_conv3_relu` | 1.8207 | 1.8511 | Bottlenecks helped most when combined with `conv3`, not as stand-alone winners. |
@@ -71,7 +71,7 @@ Artifacts for every run are stored in `results/u*/summary.json` and `results/u*/
 - `conv3` was the most reliable cheap improvement. `u04_conv3_ctrl` alone reached `1.8141`, and 8 of the top 10 runs used `CONV_KERNEL=3`.
 - `value_residual` remained one of the best core primitives. Even the plain control `u05_vr_ctrl` was strong at `1.8320`, and it paired especially well with depth.
 - `EMBED_BOTTLENECK=64` looked more like a supporting constraint than a standalone champion. It was good by itself at `1.8361`, but much better when paired with `conv3`.
-- The re-centered `vr+silu` control was only mid-pack in this queue: `u01_vr_silu_ctrl = 1.8536`. The follow-up result suggests the real win is the interaction between `vr+silu` and depth, not the shallow combo alone.
+- The re-centered `vr+silu` control was only mid-pack in this batch: `u01_vr_silu_ctrl = 1.8536`. The follow-up result suggests the real win is the interaction between `vr+silu` and depth, not the shallow combo alone.
 - `value_residual_gated` and `cumsum` helped, but plain `value_residual` was usually better.
 
 ## Implementation Notes
@@ -92,7 +92,7 @@ These are the important knobs behind the top results and what they actually do i
 
 ## Practical Read Of The Sweep
 
-If I had to compress this follow-up queue into one line, it would be:
+If I had to compress this follow-up batch into one line, it would be:
 
 `value_residual` is the stabilizer, `conv3` is the most reliable cheap gain, and depth is only worth paying for when one of those stabilizers is already in place.
 
@@ -105,4 +105,3 @@ That implies the most promising directions after this sweep are:
 
 - **Results:** `results/u*/summary.json`
 - **Commit:** `66aee98`
-- **Historical note:** the original tiny-batch orchestration scripts were removed when manual orchestration was retired from `parameter-golf`

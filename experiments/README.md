@@ -4,7 +4,7 @@
 
 - reviewed and edited in git
 - indexed by `auto-research`
-- queued from the web UI
+- used as experiment templates when creating snapshot runs
 - linked to research docs in `research/`
 
 Each spec is a JSON manifest with:
@@ -25,10 +25,14 @@ Each spec is a JSON manifest with:
 - `linked_docs`: related exploration / hypothesis / finding docs
 - `tags`: lightweight grouping labels
 - `notes`: intent or execution notes
-- `desired_state`: `draft`, `queued`, `paused`, or `archived`
 
-`auto-research` treats these files as the source of truth for experiment design.
-Runtime state stays in the platform database.
+These files describe experiment intent and config only.
+
+In the main autoresearch workflow:
+
+- snapshot records are the source of truth for runtime state
+- dispatch order comes from pending snapshots ordered by `created_at`
+- queue status, GPU assignment, and result adjudication do not live in this repo
 
 ## Micro-Explore Lane
 

@@ -40,6 +40,7 @@ export MAX_WALLCLOCK_SECONDS="${MAX_WALLCLOCK_SECONDS:-$WALLCLOCK}"
 export VAL_LOSS_EVERY="${VAL_LOSS_EVERY:-50}"
 export TRAIN_LOG_EVERY="${TRAIN_LOG_EVERY:-10}"
 export SEED="${SEED:-1337}"
+export HARD_TIMEOUT_SECONDS="${HARD_TIMEOUT_SECONDS:-${MAX_WALLCLOCK_SECONDS}}"
 
 # Print experiment config
 echo "============================================"
@@ -49,8 +50,11 @@ echo "Wallclock:  ${WALLCLOCK}s (~$(python3 -c "print(f'{$WALLCLOCK/60:.1f}')")m
 echo "============================================"
 echo "Env overrides:"
 for var in MATRIX_LR SCALAR_LR EMBED_LR NUM_LAYERS MODEL_DIM NUM_HEADS NUM_KV_HEADS \
-           MLP_MULT WARMDOWN_ITERS WARMUP_STEPS LOGIT_SOFTCAP QK_GAIN_INIT ROPE_BASE \
-           MUON_MOMENTUM MUON_BACKEND_STEPS GRAD_CLIP_NORM TIED_EMBED_LR TIED_EMBED_INIT_STD; do
+           MLP_MULT WARMDOWN_ITERS WARMUP_STEPS LOGIT_SOFTCAP QK_GAIN_INIT QK_NORM_MODE QK_NORM_EPS ROPE_BASE \
+           MUON_MOMENTUM MUON_BACKEND_STEPS GRAD_CLIP_NORM TIED_EMBED_LR TIED_EMBED_INIT_STD \
+           TRAIN_BATCH_TOKENS VAL_BATCH_SIZE VAL_LOSS_EVERY VAL_MAX_SEQS TRAIN_LOG_EVERY \
+           MAX_WALLCLOCK_SECONDS HARD_TIMEOUT_SECONDS SKIP_QUANT_EVAL SKIP_EXPORT_ARTIFACTS \
+           PYTORCH_CUDA_ALLOC_CONF; do
     if [ -n "${!var+x}" ]; then
         echo "  ${var}=${!var}"
     fi
@@ -60,18 +64,37 @@ echo "============================================"
 mkdir -p results/"${NAME}" logs
 
 # Run training
-python3 train_gpt.py 2>&1 | tee logs/"${NAME}.txt"
+TRAIN_EXIT=0
+if command -v timeout >/dev/null 2>&1 && [ "${HARD_TIMEOUT_SECONDS:-0}" -gt 0 ]; then
+    set +e
+    timeout --signal=TERM --kill-after=5s "${HARD_TIMEOUT_SECONDS}s" \
+        python3 train_gpt.py 2>&1 | tee logs/"${NAME}.txt"
+    TRAIN_EXIT=${PIPESTATUS[0]}
+    set -e
+    if [ "$TRAIN_EXIT" -eq 124 ]; then
+        echo "hard_timeout: exceeded ${HARD_TIMEOUT_SECONDS}s"
+    fi
+else
+    set +e
+    python3 train_gpt.py 2>&1 | tee logs/"${NAME}.txt"
+    TRAIN_EXIT=${PIPESTATUS[0]}
+    set -e
+fi
 
 # Copy the log into results dir for self-contained experiment records
 if [ -f "logs/${NAME}.txt" ]; then
     cp "logs/${NAME}.txt" "results/${NAME}/train.log"
 fi
 
-# Export commit-friendly artifacts for git tracking.
-python3 infra/export_experiment_artifacts.py \
-    --run-id "${NAME}" \
-    --log-path "logs/${NAME}.txt" \
-    --output-dir "results/${NAME}"
+if [ "${SKIP_EXPORT_ARTIFACTS:-0}" = "1" ]; then
+    echo "Skipping export_experiment_artifacts.py because SKIP_EXPORT_ARTIFACTS=1"
+else
+    # Export commit-friendly artifacts for git tracking.
+    python3 infra/export_experiment_artifacts.py \
+        --run-id "${NAME}" \
+        --log-path "logs/${NAME}.txt" \
+        --output-dir "results/${NAME}"
+fi
 
 # Extract final metrics
 echo ""
@@ -85,3 +108,5 @@ if grep -q "final_int8_zlib_roundtrip" "logs/${NAME}.txt"; then
     grep "final_int8_zlib_roundtrip_exact" "logs/${NAME}.txt" | tail -1
 fi
 echo "==============="
+
+exit "$TRAIN_EXIT"

@@ -4,7 +4,6 @@
     "RUN_GROUP": "h001_squared_activation_repro_v1",
     "SQUARED_VARIANTS": "true"
   },
-  "desired_state": "draft",
   "linked_docs": [
     "hypotheses/H001_squared_activations.md",
     "findings/activation_findings.md"

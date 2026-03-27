@@ -126,6 +126,8 @@ def collect_config() -> dict[str, object]:
         "WARMUP_STEPS",
         "LOGIT_SOFTCAP",
         "QK_GAIN_INIT",
+        "QK_NORM_MODE",
+        "QK_NORM_EPS",
         "ROPE_BASE",
         "MUON_MOMENTUM",
         "MUON_BACKEND_STEPS",
@@ -137,6 +139,7 @@ def collect_config() -> dict[str, object]:
         "DATA_PATH",
     ]
     return {k: os.environ[k] for k in keys if k in os.environ}
+
 
 
 def write_json(path: Path, payload: dict) -> None:

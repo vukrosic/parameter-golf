@@ -11,7 +11,9 @@ Recommended contents:
 - `notes.md` (optional commit): quick interpretation and follow-up actions
 - `train.log` (do not commit): full raw training log for local debugging
 
-`lab/run_experiment.sh` now generates `summary.json` and `metadata.json` automatically.
+`infra/run_experiment.sh` now generates `summary.json` and `metadata.json` automatically.
+
+These result folders are evidence artifacts. Queue order, run status, and GPU assignment belong to autoresearch snapshot records, not this directory.
 
 ## What to Commit vs Ignore
 

@@ -48,6 +48,7 @@ class Hyperparameters:
     # Validation cadence and batch size. Validation always uses the full fineweb_val split.
     val_batch_size = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
     val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 1000))
+    val_max_seqs = int(os.environ.get("VAL_MAX_SEQS", 0))
     train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 200))
 
     # Training length.
@@ -58,8 +59,11 @@ class Hyperparameters:
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 1024))
     max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
+    qk_norm_mode = os.environ.get("QK_NORM_MODE", "rms")
+    qk_norm_eps = float(os.environ.get("QK_NORM_EPS", "0.0"))
     checkpoint_every = int(os.environ.get("CHECKPOINT_EVERY", 0))  # 0 = disabled
     resume_from = os.environ.get("RESUME_FROM", "")  # path to checkpoint dir
+    skip_quant_eval = bool(int(os.environ.get("SKIP_QUANT_EVAL", "0")))
 
     # Model shape.
     vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
@@ -270,6 +274,8 @@ def eval_val(
         )
     local_batch_seqs = local_batch_tokens // args.train_seq_len
     total_seqs = (val_tokens.numel() - 1) // args.train_seq_len
+    if args.val_max_seqs > 0:
+        total_seqs = min(total_seqs, args.val_max_seqs)
     seq_start = (total_seqs * rank) // world_size
     seq_end = (total_seqs * (rank + 1)) // world_size
     val_loss_sum = torch.zeros((), device=device, dtype=torch.float64)
@@ -536,6 +542,32 @@ class RMSNorm(nn.Module):
         return F.rms_norm(x, (x.size(-1),), eps=self.eps)
 
 
+def _attention_rms_norm(x: Tensor, eps: float) -> Tensor:
+    if eps > 0.0:
+        return F.rms_norm(x, (x.size(-1),), eps=eps)
+    return F.rms_norm(x, (x.size(-1),))
+
+
+def _attention_l2_norm(x: Tensor, eps: float) -> Tensor:
+    eps = eps if eps > 0.0 else 1e-6
+    denom = torch.linalg.vector_norm(x.float(), dim=-1, keepdim=True).clamp_min(eps)
+    return x / denom.to(dtype=x.dtype)
+
+
+def normalize_qk(q: Tensor, k: Tensor, mode: str, eps: float) -> tuple[Tensor, Tensor]:
+    if mode == "none":
+        return q, k
+    if mode == "rms":
+        return _attention_rms_norm(q, eps), _attention_rms_norm(k, eps)
+    if mode == "q_only":
+        return _attention_rms_norm(q, eps), k
+    if mode == "k_only":
+        return q, _attention_rms_norm(k, eps)
+    if mode == "l2":
+        return _attention_l2_norm(q, eps), _attention_l2_norm(k, eps)
+    raise ValueError(f"Unknown QK_NORM_MODE: {mode!r}")
+
+
 class CastedLinear(nn.Linear):
     # Keep weights in fp32 for optimizer/state quality, cast at matmul time for bf16 compute.
     qat_enabled = False
@@ -595,6 +627,8 @@ class CausalSelfAttention(nn.Module):
         num_kv_heads: int,
         rope_base: float,
         qk_gain_init: float,
+        qk_norm_mode: str = "rms",
+        qk_norm_eps: float = 0.0,
         v_gate: bool = False,
     ):
         super().__init__()
@@ -614,6 +648,8 @@ class CausalSelfAttention(nn.Module):
         self.proj = CastedLinear(dim, dim, bias=False)
         self.proj._zero_init = True
         self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
+        self.qk_norm_mode = qk_norm_mode.lower()
+        self.qk_norm_eps = qk_norm_eps
         self.rotary = Rotary(self.head_dim, base=rope_base)
         self.v_gate_param = nn.Parameter(torch.zeros(1, dtype=torch.float32)) if v_gate else None
 
@@ -628,8 +664,7 @@ class CausalSelfAttention(nn.Module):
                 v = v + torch.sigmoid(self.v_gate_param.to(dtype=v.dtype)) * v_residual
             else:
                 v = v + v_residual
-        q = F.rms_norm(q, (q.size(-1),))
-        k = F.rms_norm(k, (k.size(-1),))
+        q, k = normalize_qk(q, k, self.qk_norm_mode, self.qk_norm_eps)
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = apply_rotary_emb(q, cos, sin)
         k = apply_rotary_emb(k, cos, sin)
@@ -1146,6 +1181,8 @@ class Block(nn.Module):
         mlp_mult: int,
         rope_base: float,
         qk_gain_init: float,
+        qk_norm_mode: str = "rms",
+        qk_norm_eps: float = 0.0,
         v_gate: bool = False,
         mlp_act: str = "relu2",
         act_power: float = 2.0,
@@ -1159,7 +1196,16 @@ class Block(nn.Module):
         super().__init__()
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
-        self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init, v_gate=v_gate)
+        self.attn = CausalSelfAttention(
+            dim,
+            num_heads,
+            num_kv_heads,
+            rope_base,
+            qk_gain_init,
+            qk_norm_mode=qk_norm_mode,
+            qk_norm_eps=qk_norm_eps,
+            v_gate=v_gate,
+        )
         if num_experts > 0:
             self.mlp = SoftMoE(dim, mlp_mult, num_experts, act=mlp_act, act_power=act_power, act_gate_floor=act_gate_floor)
         else:
@@ -1227,6 +1273,8 @@ class GPT(nn.Module):
         logit_softcap: float,
         rope_base: float,
         qk_gain_init: float,
+        qk_norm_mode: str = "rms",
+        qk_norm_eps: float = 0.0,
         attnres_mode: str = "none",
         mlp_act: str = "relu2",
         act_power: float = 2.0,
@@ -1280,6 +1328,8 @@ class GPT(nn.Module):
                     mlp_mult,
                     rope_base,
                     qk_gain_init,
+                    qk_norm_mode=qk_norm_mode,
+                    qk_norm_eps=qk_norm_eps,
                     v_gate=use_v_gate,
                     mlp_act=mlp_act,
                     act_power=act_power,
@@ -1483,7 +1533,12 @@ def main() -> None:
     )
     log0(f"val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path={args.tokenizer_path}")
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
-    log0(f"val_loader:shards pattern={args.val_files} tokens:{val_tokens.numel() - 1}")
+    total_val_seqs = (val_tokens.numel() - 1) // args.train_seq_len
+    effective_val_seqs = min(total_val_seqs, args.val_max_seqs) if args.val_max_seqs > 0 else total_val_seqs
+    log0(
+        f"val_loader:shards pattern={args.val_files} tokens:{val_tokens.numel() - 1} "
+        f"seqs:{total_val_seqs} eval_seqs:{effective_val_seqs}"
+    )
 
     # -----------------------------
     # MODEL + OPTIMIZER SETUP
@@ -1501,6 +1556,8 @@ def main() -> None:
         logit_softcap=args.logit_softcap,
         rope_base=args.rope_base,
         qk_gain_init=args.qk_gain_init,
+        qk_norm_mode=args.qk_norm_mode,
+        qk_norm_eps=args.qk_norm_eps,
         attnres_mode=args.attnres_mode,
         mlp_act=args.mlp_act,
         act_power=args.act_power,
@@ -1817,6 +1874,12 @@ def main() -> None:
         log0(f"Serialized model: {model_bytes} bytes")
         log0(f"Code size: {code_bytes} bytes")
         log0(f"Total submission size: {model_bytes + code_bytes} bytes")
+
+    if args.skip_quant_eval:
+        log0("Skipping final int8+zlib roundtrip evaluation (SKIP_QUANT_EVAL=1)")
+        if distributed:
+            dist.destroy_process_group()
+        return
 
     quant_obj, quant_stats = quantize_state_dict_int8(base_model.state_dict())
     quant_buf = io.BytesIO()

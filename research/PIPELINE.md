@@ -1,6 +1,6 @@
 # Parameter Golf Research Method
 
-This file describes the research method only. The old repo-local queue, fleet, debate, and `/wave` workflow has been retired from `parameter-golf`.
+This file describes the research method only. `parameter-golf` is not the authority for dispatch order or runtime state; the autoresearch lab owns that through snapshot records.
 
 ## Core Loop
 
